@@ -3,3 +3,7 @@ reference/
 *.blend1
 node_modules/
 dist/
+.wrangler/
+blender/renders/
+*.log
+.DS_Store

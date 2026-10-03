@@ -1,0 +1,238 @@
+:root {
+	--night: #05061a;
+	--blue: #4050e0;
+	--blue-mid: #40a0e0;
+	--purple: #402040;
+	--teal: #48f0e0;
+	--pink: #f06ea8;
+	--paper: #f8f8f8;
+	--font-pixel: "Press Start 2P", monospace;
+	--font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+	color-scheme: dark;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+	margin: 0;
+	height: 100%;
+	background: var(--night);
+	color: var(--paper);
+	font-family: var(--font-body);
+	line-height: 1.5;
+}
+
+#root {
+	position: relative;
+	overflow: hidden;
+}
+
+canvas {
+	display: block;
+	touch-action: none;
+}
+
+.pixel {
+	font-family: var(--font-pixel);
+	letter-spacing: 0.02em;
+	line-height: 1.6;
+}
+
+a {
+	color: var(--teal);
+}
+
+/* Loader and Entry */
+.loader {
+	position: absolute;
+	inset: 0;
+	display: grid;
+	place-content: center;
+	gap: 1.5rem;
+	text-align: center;
+	background: var(--night);
+	z-index: 10;
+}
+
+.loader h1 {
+	font-size: clamp(1rem, 4vw, 2rem);
+	color: var(--teal);
+	text-shadow:
+		0 0 12px var(--teal),
+		0 0 32px rgb(72 240 224 / 0.5);
+	margin: 0;
+}
+
+.loader p {
+	font-size: 0.75rem;
+	color: var(--pink);
+	margin: 0;
+}
+
+button.pixel {
+	font-size: 0.7rem;
+	padding: 0.9rem 1.2rem;
+	border: 3px solid var(--teal);
+	background: transparent;
+	color: var(--teal);
+	cursor: pointer;
+	box-shadow: 0 0 0 0 var(--teal);
+	transition:
+		background 120ms,
+		color 120ms,
+		box-shadow 120ms;
+}
+
+button.pixel:hover,
+button.pixel:focus-visible {
+	background: var(--teal);
+	color: var(--night);
+	box-shadow: 0 0 18px var(--teal);
+	outline: none;
+}
+
+button.entry {
+	font-size: 0.9rem;
+}
+
+/* Station Menu */
+.station-menu {
+	position: absolute;
+	left: 1rem;
+	bottom: 1rem;
+	z-index: 5;
+}
+
+.station-menu ul {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+}
+
+.station-menu button {
+	font-size: 0.6rem;
+	padding: 0.6rem 0.8rem;
+	border-color: var(--pink);
+	color: var(--pink);
+	background: rgb(5 6 26 / 0.7);
+}
+
+.station-menu button:hover,
+.station-menu button:focus-visible,
+.station-menu button[aria-current] {
+	background: var(--pink);
+	color: var(--night);
+	box-shadow: 0 0 14px var(--pink);
+}
+
+/* Hint */
+.hint {
+	position: absolute;
+	top: 1.5rem;
+	left: 50%;
+	transform: translateX(-50%);
+	margin: 0;
+	font-size: 0.6rem;
+	color: var(--teal);
+	background: rgb(5 6 26 / 0.75);
+	padding: 0.75rem 1rem;
+	border: 2px solid var(--teal);
+	z-index: 5;
+}
+
+/* Sections: the side panel form (ADR 0002). Projection onto screens comes later. */
+.sections {
+	position: absolute;
+	top: 1rem;
+	right: 1rem;
+	bottom: 4.5rem;
+	width: min(28rem, calc(100vw - 2rem));
+	z-index: 5;
+	pointer-events: none;
+}
+
+.section {
+	pointer-events: auto;
+	max-height: 100%;
+	overflow: auto;
+	padding: 1.5rem;
+	background: rgb(5 6 26 / 0.88);
+	border: 3px solid var(--blue-mid);
+	box-shadow: 0 0 24px rgb(64 160 224 / 0.35);
+	backdrop-filter: blur(6px);
+}
+
+.section h2 {
+	font-size: 0.9rem;
+	color: var(--pink);
+	margin: 0 0 1rem;
+}
+
+.section h3 {
+	font-size: 1rem;
+	margin: 0 0 0.25rem;
+}
+
+.section .tags {
+	color: var(--blue-mid);
+	font-size: 0.85rem;
+}
+
+.section .close {
+	margin-top: 1rem;
+}
+
+.cards {
+	list-style: none;
+	padding: 0;
+	margin: 0;
+}
+
+/* Inactive Sections stay in the document for crawlers and screen readers. */
+.section--inactive {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	clip-path: inset(50%);
+	white-space: nowrap;
+	pointer-events: none;
+}
+
+/* No WebGL: everything as a plain page. */
+.sections.plain {
+	position: static;
+	width: min(48rem, 100%);
+	margin: 0 auto;
+	padding: 2rem 1rem;
+	pointer-events: auto;
+}
+
+.sections.plain .section {
+	margin-bottom: 1.5rem;
+}
+
+@media (max-width: 700px) {
+	.sections {
+		top: auto;
+		bottom: 4.5rem;
+		left: 1rem;
+		right: 1rem;
+		width: auto;
+		max-height: 55vh;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	button.pixel {
+		transition: none;
+	}
+}

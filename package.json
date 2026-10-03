@@ -1,0 +1,36 @@
+{
+	"name": "portfolio",
+	"private": true,
+	"version": "0.0.0",
+	"type": "module",
+	"packageManager": "pnpm@12.4.1",
+	"scripts": {
+		"dev": "vite",
+		"build": "tsc -b && vite build",
+		"preview": "vite preview",
+		"lint": "biome check .",
+		"lint:fix": "biome check --write .",
+		"check": "tsc -b && biome check .",
+		"model:build": "node blender/run.mjs"
+	},
+	"dependencies": {
+		"@react-three/drei": "latest",
+		"@react-three/fiber": "latest",
+		"@react-three/postprocessing": "latest",
+		"react": "^19.2.8",
+		"react-dom": "^19.2.8",
+		"three": "latest"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "latest",
+		"@playwright/test": "^1.63.0",
+		"@types/node": "^24.13.3",
+		"@types/react": "^19.2.18",
+		"@types/react-dom": "^19.2.7",
+		"@types/three": "latest",
+		"@vitejs/plugin-react": "^6.1.1",
+		"typescript": "~6.0.2",
+		"vite": "^8.3.0",
+		"wrangler": "latest"
+	}
+}

@@ -19,3 +19,4 @@ Read `CONTEXT.md` before naming anything: it fixes the vocabulary (Creamery, Hot
 - Hold roughly 45 fps on a mid-range phone. If a feature can't, it belongs in a lower Quality Tier, not deleted.
 - Credit Jesse Zhou, Brandon James Greer, and every audio source in the Credits Section whenever something new is used.
 - The Reference image lives in `reference/`, which is gitignored. It is for visual comparison only and is never committed, bundled, or shown on the site, because the repo is public and the art is Greer's.
+- To see the site, run `pnpm dev` and then `node scripts/shot.mjs <url>`; it writes Street View and every Station to `blender/renders/web/`. Review those PNGs rather than guessing at the look.
