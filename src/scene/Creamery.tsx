@@ -46,11 +46,12 @@ export function Creamery({ onHotspot, motion }: Props) {
 
 	useFrame((state, delta) => {
 		if (motion) for (const fan of fans.current) fan.rotateZ(delta * 6);
-		const pulse = 1 + 0.35 * Math.sin(state.clock.elapsedTime * 4);
+		// Additive boost, so dim plates like the sign and cow screen glow visibly.
+		const pulse = 0.8 + 0.4 * Math.sin(state.clock.elapsedTime * 4);
 		for (const [name, m] of hotspots.current) {
 			const base = m.userData.baseEmissive as number;
 			m.emissiveIntensity =
-				name === hovered ? base * (motion ? pulse : 1.4) : base;
+				name === hovered ? base + (motion ? pulse : 0.8) : base;
 		}
 	});
 

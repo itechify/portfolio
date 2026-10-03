@@ -374,8 +374,6 @@ def counter_interior(m):
     cone("softserve_cone", (-0.45, -0.3, 1.78), 0.0, 0.12, 0.22, m.cookie)
     ball("softserve_swirl", (-0.45, -0.3, 1.95), 0.1, m.cream, subdiv=2)
     # Round window at the back with a silhouette
-    cyl("counter_arch", (-0.3, 0.26, 1.6), 0.0, 0.0, m.purple_deep)  # placeholder removed below
-    bpy.data.objects.remove(bpy.data.objects["counter_arch"])
     cyl("back_window_ring", (0.0, 0.25, 1.9), 0.3, 0.06, m.blue_mid, axis="Y")
     cyl("back_window", (0.0, 0.24, 1.9), 0.25, 0.04, m.screen_pink, axis="Y")
     # A cat silhouette in the window: body, head, two ears, a tail
