@@ -1,9 +1,9 @@
 // Screenshots the running dev server at Street View and at each Station.
-// Usage: node scripts/shot.mjs [baseUrl]   (default http://localhost:5179)
+// Usage: node scripts/shot.mjs [baseUrl]   (default http://localhost:5173)
 import { mkdirSync } from "node:fs";
 import { chromium } from "@playwright/test";
 
-const base = process.argv[2] ?? "http://localhost:5179";
+const base = process.argv[2] ?? "http://localhost:5173";
 const out = "blender/renders/web";
 mkdirSync(out, { recursive: true });
 
