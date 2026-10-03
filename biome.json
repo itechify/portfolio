@@ -7,11 +7,7 @@
 	},
 	"files": {
 		"ignoreUnknown": false,
-		"includes": [
-			"**",
-			"!.impeccable/**",
-			"!dist/**"
-		]
+		"includes": ["**", "!.impeccable", "!dist"]
 	},
 	"formatter": {
 		"enabled": true,
