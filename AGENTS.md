@@ -20,3 +20,17 @@ Read `CONTEXT.md` before naming anything: it fixes the vocabulary (Creamery, Hot
 - Credit Jesse Zhou, Brandon James Greer, and every audio source in the Credits Section whenever something new is used.
 - The Reference image lives in `reference/`, which is gitignored. It is for visual comparison only and is never committed, bundled, or shown on the site, because the repo is public and the art is Greer's.
 - To see the site, run `pnpm dev` and then `node scripts/shot.mjs <url>`; it writes Street View and every Station to `blender/renders/web/`. Review those PNGs rather than guessing at the look.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues for itechify/portfolio, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
