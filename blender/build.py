@@ -486,7 +486,6 @@ def upper(m):
     f.append(box("cow_snout", (-1.9, -1.78, 4.05), (0.5, 0.02, 0.24), m.cow_pink))
     f.append(box("cow_nostril_l", (-2.0, -1.79, 4.06), (0.06, 0.01, 0.06), m.ink))
     f.append(box("cow_nostril_r", (-1.8, -1.79, 4.06), (0.06, 0.01, 0.06), m.ink))
-    f.append(box("cow_scan_line", (-1.9, -1.8, 4.5), (1.3, 0.005, 0.015), m.glow_white))
     parent(f, plate)
 
     # Three fans: housing with grille bars, and a single-mesh blade assembly

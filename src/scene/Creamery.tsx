@@ -15,6 +15,11 @@ interface Props {
 export function Creamery({ onHotspot, motion }: Props) {
 	const { scene } = useGLTF(MODEL_URL);
 	const [hovered, setHovered] = useState<string | null>(null);
+	// Hover is decided once per pointer-move: the scene handler records which
+	// Hotspot (if any) the ray hit, and a document-level listener, which runs
+	// after it, commits the result. Pointer-out is unused because it fires per
+	// child mesh as the cursor crosses a Hotspot's detail, causing flicker.
+	const hit = useRef<string | null>(null);
 	const fans = useRef<Object3D[]>([]);
 	const hotspots = useRef(new Map<string, MeshStandardMaterial>());
 
@@ -38,6 +43,16 @@ export function Creamery({ onHotspot, motion }: Props) {
 	}, [scene]);
 
 	useEffect(() => {
+		const commit = () => {
+			const name = hit.current;
+			hit.current = null;
+			setHovered((prev) => (prev === name ? prev : name));
+		};
+		document.addEventListener("pointermove", commit);
+		return () => document.removeEventListener("pointermove", commit);
+	}, []);
+
+	useEffect(() => {
 		document.body.style.cursor = hovered ? "pointer" : "";
 		return () => {
 			document.body.style.cursor = "";
@@ -45,7 +60,9 @@ export function Creamery({ onHotspot, motion }: Props) {
 	}, [hovered]);
 
 	useFrame((state, delta) => {
-		if (motion) for (const fan of fans.current) fan.rotateZ(delta * 6);
+		// The glTF exporter converts Blender's Z-up mesh data to Y-up, so the
+		// cylinder axis the blades were built around is local Y here.
+		if (motion) for (const fan of fans.current) fan.rotateY(delta * 6);
 		// Additive boost, so dim plates like the sign and cow screen glow visibly.
 		const pulse = 0.8 + 0.4 * Math.sin(state.clock.elapsedTime * 4);
 		for (const [name, m] of hotspots.current) {
@@ -55,8 +72,11 @@ export function Creamery({ onHotspot, motion }: Props) {
 		}
 	});
 
+	// R3F calls this once per intersected mesh under the root, nearest first, so
+	// resolve from the nearest intersection only: a letter in front of the plate
+	// wins, and the building behind a Hotspot can't cancel it.
 	const hotspotName = (e: ThreeEvent<PointerEvent | MouseEvent>) => {
-		let o: Object3D | null = e.object;
+		let o: Object3D | null = e.intersections[0]?.object ?? e.object;
 		while (o && !o.name.startsWith("hotspot_")) o = o.parent;
 		return o && stationByHotspot(o.name) ? o.name : null;
 	};
@@ -72,10 +92,8 @@ export function Creamery({ onHotspot, motion }: Props) {
 				onHotspot(name);
 			}}
 			onPointerMove={(e: ThreeEvent<PointerEvent>) => {
-				const name = hotspotName(e);
-				if (name !== hovered) setHovered(name);
+				hit.current = hotspotName(e);
 			}}
-			onPointerOut={() => setHovered(null)}
 		/>
 	);
 }
