@@ -96,24 +96,7 @@ export function Scene({ station, onStation, motion }: Props) {
 		>
 			<color attach="background" args={["#05061a"]} />
 			<fog attach="fog" args={["#05061a", 25, 45]} />
-			<ambientLight intensity={0.25} color="#4050e0" />
-			<directionalLight
-				position={[4, 12, 10]}
-				intensity={0.6}
-				color="#8fb7ff"
-			/>
-			<pointLight
-				position={[-1.2, 2, 1]}
-				intensity={6}
-				color="#f06ea8"
-				distance={6}
-			/>
-			<pointLight
-				position={[-0.9, 3, 2.5]}
-				intensity={8}
-				color="#48f0e0"
-				distance={8}
-			/>
+			{/* No scene lights: lighting is baked into the model (ADR 0001). */}
 			<Suspense fallback={null}>
 				<Creamery
 					motion={motion}
@@ -126,8 +109,10 @@ export function Scene({ station, onStation, motion }: Props) {
 			</Suspense>
 			<Rig station={station} motion={motion} />
 			<EffectComposer multisampling={0}>
+				{/* Baked textures top out at 1.0, so only emissives above it bloom. */}
 				<Bloom
-					luminanceThreshold={0.9}
+					luminanceThreshold={1.0}
+					luminanceSmoothing={0.1}
 					mipmapBlur
 					intensity={0.9}
 					radius={0.6}

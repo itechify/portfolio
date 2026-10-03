@@ -7,3 +7,4 @@ dist/
 blender/renders/
 *.log
 .DS_Store
+blender/bakes/

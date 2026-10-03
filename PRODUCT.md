@@ -29,7 +29,7 @@ The content lives inside a hand-built world rather than on pages. It is modeled 
 - One immersive scene, no scrollable page. Clicking a Hotspot moves the camera to its Station and reveals that Section's content. Sections: About, Projects, Resume, Contact, Credits. Hotspot to Section mapping: cow screen is About, right-side machine is Projects, left kiosk is Resume, notice board is Contact, rooftop monitor is Credits, neon sign returns to Street View.
 - Planned future Sections, not yet designed: hobbies and interests, writing or blog posts, other creative work. Each will need a Hotspot and a Station when it arrives.
 - Section content is live DOM, always present in the document, visible only at its Station, shown as a panel on narrow screens. Projection onto the object's screen face on wide screens is planned (ADR 0002).
-- The model comes from `blender/build.py` and is rebuilt, never hand-edited. Lighting will be baked into textures (ADR 0001); the current build uses real-time lights as a stand-in.
+- The model comes from `blender/build.py` and is rebuilt, never hand-edited. Lighting is baked into texture atlases (ADR 0001); the browser renders baked meshes unlit and only neon and screens are emissive.
 - Performance target is roughly 45 fps on a mid-range phone, held by Quality Tiers that drop reflections, bloom, and pixel ratio, plus a manual toggle.
 - Entry button gates the scene and starts sound. Ambient music and click sounds come from CC0 sources, credited, with a visible mute.
 - Deployed to Cloudflare Workers static assets from the public GitHub repo `itechify/portfolio`. Cloudflare Web Analytics, no cookies.

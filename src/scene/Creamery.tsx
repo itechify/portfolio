@@ -1,10 +1,19 @@
 import { useGLTF } from "@react-three/drei";
 import { type ThreeEvent, useFrame } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Mesh, type MeshStandardMaterial, type Object3D } from "three";
+import {
+	Mesh,
+	MeshBasicMaterial,
+	MeshStandardMaterial,
+	type Object3D,
+} from "three";
 import { stationByHotspot } from "../stations";
 
 const MODEL_URL = "/models/creamery.glb";
+const DRACO_PATH = "/draco/";
+
+const hasEmission = (m: MeshStandardMaterial) =>
+	m.emissiveIntensity > 0 && m.emissive.getHex() !== 0;
 
 interface Props {
 	onHotspot: (name: string) => void;
@@ -13,7 +22,7 @@ interface Props {
 
 /** The GLB built by blender/build.py, with Hotspot and Prop behaviour attached. */
 export function Creamery({ onHotspot, motion }: Props) {
-	const { scene } = useGLTF(MODEL_URL);
+	const { scene } = useGLTF(MODEL_URL, DRACO_PATH);
 	const [hovered, setHovered] = useState<string | null>(null);
 	// Hover is decided once per pointer-move: the scene handler records which
 	// Hotspot (if any) the ray hit, and a document-level listener, which runs
@@ -21,7 +30,11 @@ export function Creamery({ onHotspot, motion }: Props) {
 	// child mesh as the cursor crosses a Hotspot's detail, causing flicker.
 	const hit = useRef<string | null>(null);
 	const fans = useRef<Object3D[]>([]);
-	const hotspots = useRef(new Map<string, MeshStandardMaterial>());
+	// Emissive plates glow by raising emission; baked (unlit) plates glow by
+	// scaling their colour above white, which the bloom pass then picks up.
+	const hotspots = useRef(
+		new Map<string, MeshStandardMaterial | MeshBasicMaterial>(),
+	);
 
 	const root = useMemo(() => {
 		// The ground is rendered by the reflective floor instead.
@@ -30,11 +43,21 @@ export function Creamery({ onHotspot, motion }: Props) {
 		hotspots.current.clear();
 		scene.traverse((o) => {
 			if (!(o instanceof Mesh)) return;
+			// Lighting is baked into the textures (ADR 0001), so baked meshes
+			// render unlit. Emissive meshes keep their material for bloom.
+			const std = o.material as MeshStandardMaterial;
+			if (std.map && !hasEmission(std)) {
+				o.material = new MeshBasicMaterial({ map: std.map });
+			}
 			if (o.name.startsWith("prop_fan_")) fans.current.push(o);
 			if (o.name.startsWith("hotspot_")) {
 				// Each Hotspot gets its own material so hover glow doesn't leak.
-				const m = (o.material as MeshStandardMaterial).clone();
-				m.userData.baseEmissive = m.emissiveIntensity;
+				const m = (
+					o.material as MeshStandardMaterial | MeshBasicMaterial
+				).clone();
+				if (m instanceof MeshStandardMaterial) {
+					m.userData.baseEmissive = m.emissiveIntensity;
+				}
 				o.material = m;
 				hotspots.current.set(o.name, m);
 			}
@@ -66,9 +89,12 @@ export function Creamery({ onHotspot, motion }: Props) {
 		// Additive boost, so dim plates like the sign and cow screen glow visibly.
 		const pulse = 0.8 + 0.4 * Math.sin(state.clock.elapsedTime * 4);
 		for (const [name, m] of hotspots.current) {
-			const base = m.userData.baseEmissive as number;
-			m.emissiveIntensity =
-				name === hovered ? base + (motion ? pulse : 0.8) : base;
+			const boost = name === hovered ? (motion ? pulse : 0.8) : 0;
+			if (m instanceof MeshStandardMaterial) {
+				m.emissiveIntensity = (m.userData.baseEmissive as number) + boost;
+			} else {
+				m.color.setScalar(1 + boost);
+			}
 		}
 	});
 
@@ -98,4 +124,4 @@ export function Creamery({ onHotspot, motion }: Props) {
 	);
 }
 
-useGLTF.preload(MODEL_URL);
+useGLTF.preload(MODEL_URL, DRACO_PATH);

@@ -41,9 +41,9 @@ for (const t of targets) {
 	console.log(
 		`${ok ? "ok  " : "FAIL"} ${t.name}: cursor=${cursor || "default"} active=${active}`,
 	);
-	// Return to Street View before the next click so pixel positions hold.
+	// Return to Street View and let the camera settle so pixel positions hold.
 	await page.getByRole("button", { name: "Street View", exact: true }).click();
-	await page.waitForTimeout(1500);
+	await page.waitForTimeout(2500);
 }
 await browser.close();
 process.exit(failed ? 1 : 0);

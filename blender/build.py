@@ -22,6 +22,7 @@ from mathutils import Vector
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GLB_PATH = os.path.join(ROOT, "public", "models", "creamery.glb")
 RENDER_DIR = os.path.join(ROOT, "blender", "renders")
+BAKE_DIR = os.path.join(ROOT, "blender", "bakes")
 FONT_PATH = os.path.join(ROOT, "blender", "fonts", "PressStart2P-Regular.ttf")
 
 # Palette sampled from the Reference, plus a few supporting tones (sRGB hex).
@@ -112,9 +113,10 @@ class M:
         self.bulb = mat("bulb", "white", emit="white", strength=3.0)
         self.bulb_pink = mat("bulb_pink", "pink_pale", emit="pink_pale", strength=2.5)
         self.glow_white = mat("glow_white", "white", emit="white", strength=0.6)
-        # The cow is a lit display, so its white reads at night without baked light
-        self.cow_white = mat("cow_white", "white", emit="white", strength=0.45)
-        self.cow_pink = mat("cow_pink", "pink", emit="pink", strength=0.5)
+        # The cow is a lit display: emission is its only light in the browser,
+        # so full strength keeps the face white without crossing into bloom.
+        self.cow_white = mat("cow_white", "white", emit="white", strength=0.95)
+        self.cow_pink = mat("cow_pink", "pink", emit="pink", strength=0.95)
 
 
 # ---------------------------------------------------------------- primitives
@@ -695,7 +697,9 @@ def render(scene, cams):
     scene.cycles.device = "GPU"
     scene.cycles.samples = 128
     scene.cycles.use_denoising = True
-    scene.view_settings.view_transform = "AgX"
+    # Standard, not AgX: the browser applies no tone curve to the baked
+    # textures, so the review render should not either.
+    scene.view_settings.view_transform = "Standard"
     os.makedirs(RENDER_DIR, exist_ok=True)
     for name, cam in cams.items():
         scene.camera = cam
@@ -706,29 +710,155 @@ def render(scene, cams):
         print("RENDERED", scene.render.filepath)
 
 
-def join_statics():
-    """Join every top-level non-Hotspot, non-Prop mesh by material."""
-    groups = {}
-    for o in list(bpy.data.objects):
-        if o.type != "MESH" or o.parent is not None:
+def is_emissive(material):
+    if material is None or not material.use_nodes:
+        return False
+    bsdf = material.node_tree.nodes.get("Principled BSDF")
+    return bool(bsdf) and bsdf.inputs["Emission Strength"].default_value > 0
+
+
+def mesh_objects():
+    return [o for o in bpy.data.objects if o.type == "MESH"]
+
+
+def regroup():
+    """Reduce draw calls and form bake groups.
+
+    Non-emissive geometry is joined into: one building mesh, one detail mesh
+    per Hotspot, one mesh of miscellaneous Props. Emissive geometry is joined
+    per material and never baked, so bloom and hover glow keep working. Fans,
+    Hotspot plates, and the ground stay as they are.
+
+    Returns a list of (group name, objects, atlas size) to bake.
+    """
+    statics, emissive_statics, props, plates = [], {}, [], []
+    per_hotspot = {}
+    for o in mesh_objects():
+        emis = is_emissive(o.data.materials[0]) if o.data.materials else False
+        if o.name.startswith("hotspot_") and not emis:
+            plates.append(o)  # baked alone; the web scales its colour on hover
+        elif o.parent is not None and o.parent.name.startswith("hotspot_"):
+            d = per_hotspot.setdefault(o.parent.name, {"detail": [], "glow": {}})
+            if emis:
+                d["glow"].setdefault(o.data.materials[0].name, []).append(o)
+            else:
+                d["detail"].append(o)
+        elif o.name.startswith("hotspot_") or o.name.startswith("prop_fan_") or o.name == "ground":
             continue
-        if o.name.startswith(("hotspot_", "prop_")):
-            continue
-        key = o.data.materials[0].name if o.data.materials else "none"
-        groups.setdefault(key, []).append(o)
-    for key, objs in groups.items():
-        join(objs, f"static_{key}")
+        elif o.name.startswith("prop_"):
+            if not emis:
+                props.append(o)
+            else:
+                emissive_statics.setdefault(o.data.materials[0].name, []).append(o)
+        elif emis:
+            emissive_statics.setdefault(o.data.materials[0].name, []).append(o)
+        else:
+            statics.append(o)
+
+    groups = []
+    building = join(statics, "building")
+    groups.append(("building", [building], 2048))
+    for key, objs in emissive_statics.items():
+        join(objs, f"glow_{key}")
+    for hs, d in per_hotspot.items():
+        short = hs.removeprefix("hotspot_")
+        if d["detail"]:
+            groups.append((f"detail_{short}", [join(d["detail"], f"{short}_detail")], 512))
+        for key, objs in d["glow"].items():
+            join(objs, f"{short}_glow_{key}")
+    for plate in plates:
+        groups.append((f"plate_{plate.name.removeprefix('hotspot_')}", [plate], 512))
+    if props:
+        groups.append(("props", [join(props, "props")], 1024))
+    fans = [o for o in mesh_objects() if o.name.startswith("prop_fan_")]
+    if fans:
+        groups.append(("fans", fans, 256))
+    return groups
+
+
+def unwrap(objs):
+    """Give the objects a shared, non-overlapping 'bake' UV layout."""
+    bpy.ops.object.select_all(action="DESELECT")
+    for o in objs:
+        o.select_set(True)
+        uv = o.data.uv_layers.get("bake") or o.data.uv_layers.new(name="bake")
+        o.data.uv_layers.active = uv
+        uv.active_render = True
+    bpy.context.view_layer.objects.active = objs[0]
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.uv.smart_project(angle_limit=math.radians(66), island_margin=0.004, scale_to_bounds=False)
+    bpy.ops.uv.pack_islands(margin=0.004)
+    bpy.ops.object.mode_set(mode="OBJECT")
+
+
+def bake_group(scene, name, objs, size, samples):
+    """Bake combined lighting for the objects into one atlas, then replace
+    their materials with a single textured material."""
+    unwrap(objs)
+    img = bpy.data.images.new(f"bake_{name}", size, size, alpha=False)
+    mats = {s.material for o in objs for s in o.material_slots if s.material}
+    added = []
+    for mt in mats:
+        node = mt.node_tree.nodes.new("ShaderNodeTexImage")
+        node.image = img
+        mt.node_tree.nodes.active = node
+        added.append((mt, node))
+    bpy.ops.object.select_all(action="DESELECT")
+    for o in objs:
+        o.select_set(True)
+    bpy.context.view_layer.objects.active = objs[0]
+    scene.cycles.samples = samples
+    scene.render.bake.margin = 8
+    scene.render.bake.use_clear = True
+    bpy.ops.object.bake(type="COMBINED")
+    for mt, node in added:
+        mt.node_tree.nodes.remove(node)
+    os.makedirs(BAKE_DIR, exist_ok=True)
+    img.filepath_raw = os.path.join(BAKE_DIR, f"{name}.png")
+    img.file_format = "PNG"
+    img.save()
+
+    baked = bpy.data.materials.new(f"baked_{name}")
+    baked.use_nodes = True
+    bsdf = baked.node_tree.nodes["Principled BSDF"]
+    bsdf.inputs["Roughness"].default_value = 1.0
+    bsdf.inputs["Specular IOR Level"].default_value = 0.0
+    tex = baked.node_tree.nodes.new("ShaderNodeTexImage")
+    tex.image = img
+    baked.node_tree.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
+    for o in objs:
+        o.data.materials.clear()
+        o.data.materials.append(baked)
+        for p in o.data.polygons:
+            p.material_index = 0
+        for uv in list(o.data.uv_layers):
+            if uv.name != "bake":
+                o.data.uv_layers.remove(uv)
+    print(f"BAKED {name} {size}px {len(objs)} objects")
+
+
+def bake_all(scene, groups, samples):
+    prefs = bpy.context.preferences.addons["cycles"].preferences
+    prefs.compute_device_type = "OPTIX"
+    prefs.get_devices()
+    for d in prefs.devices:
+        d.use = d.type == "OPTIX"
+    scene.render.engine = "CYCLES"
+    scene.cycles.device = "GPU"
+    for name, objs, size in groups:
+        bake_group(scene, name, objs, size, samples if name == "building" else max(128, samples // 2))
 
 
 def export():
-    join_statics()
-    verts = sum(len(o.data.vertices) for o in bpy.data.objects if o.type == "MESH")
-    tris = sum(sum(len(p.vertices) - 2 for p in o.data.polygons) for o in bpy.data.objects if o.type == "MESH")
-    meshes = sum(1 for o in bpy.data.objects if o.type == "MESH")
+    verts = sum(len(o.data.vertices) for o in mesh_objects())
+    tris = sum(sum(len(p.vertices) - 2 for p in o.data.polygons) for o in mesh_objects())
+    meshes = len(mesh_objects())
+    images = len([i for i in bpy.data.images if i.name.startswith("bake_")])
     os.makedirs(os.path.dirname(GLB_PATH), exist_ok=True)
     bpy.ops.object.select_all(action="DESELECT")
-    for o in bpy.data.objects:
-        o.select_set(o.type == "MESH")
+    for o in mesh_objects():
+        o.select_set(True)
     bpy.ops.export_scene.gltf(
         filepath=GLB_PATH,
         export_format="GLB",
@@ -737,12 +867,22 @@ def export():
         export_lights=False,
         export_cameras=False,
         export_yup=True,
+        export_image_format="WEBP",
+        export_image_quality=85,
+        export_draco_mesh_compression_enable=True,
+        export_draco_mesh_compression_level=6,
     )
-    print(f"EXPORTED {GLB_PATH} {os.path.getsize(GLB_PATH)} bytes, {meshes} meshes, {verts} verts, {tris} tris")
+    print(
+        f"EXPORTED {GLB_PATH} {os.path.getsize(GLB_PATH)} bytes, "
+        f"{meshes} meshes, {images} atlases, {verts} verts, {tris} tris"
+    )
 
 
 if __name__ == "__main__":
     scene, cams = build()
     if "--no-render" not in sys.argv:
         render(scene, cams)
+    groups = regroup()
+    if "--no-bake" not in sys.argv:
+        bake_all(scene, groups, samples=512)
     export()
