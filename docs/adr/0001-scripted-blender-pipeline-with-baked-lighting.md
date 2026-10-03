@@ -9,6 +9,7 @@ The Creamery is modeled in Blender by a Python build script that constructs ever
 ## Considered Options
 
 - **Hand modeling in the Blender UI** was rejected because the model is built by an AI agent working through scripts, and a hand-edited .blend file can't be reviewed, diffed, or rebuilt from a description. The agent reviews rendered images instead and changes the script.
+- **Live editing through the Blender MCP** was rejected as the source of truth for the same reasons as hand modeling. A live session is a scratchpad for prototyping a Prop or inspecting the scene; anything worth keeping is written into the build script, and the live result is thrown away.
 - **Real-time lighting in Three.js** was rejected because soft shadows, bounce light, and neon glow at phone frame rates are not achievable without baking. Jesse Zhou's ramen shop, the model for this site, reached its look the same way.
 
 ## Consequences

@@ -15,6 +15,7 @@ Read `CONTEXT.md` before naming anything: it fixes the vocabulary (Creamery, Hot
 
 - pnpm for every install and script. Biome for lint and format.
 - Blender runs headless: `blender -b --python <script>`. The GUI is unreliable over Remote Desktop; rely on rendered PNGs to review the model.
+- The Blender MCP is a scratchpad only (ADR 0001): prototype in it, then put what you keep into `blender/build.py`. Never call `build()` in a live session; it resets the open file.
 - Motion and sound are opt-in: honour `prefers-reduced-motion`, and start audio only after Entry.
 - Hold roughly 45 fps on a mid-range phone. If a feature can't, it belongs in a lower Quality Tier, not deleted.
 - Credit Jesse Zhou, Brandon James Greer, and every audio source in the Credits Section whenever something new is used.

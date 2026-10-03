@@ -1,5 +1,5 @@
 import { useGLTF } from "@react-three/drei";
-import { type ThreeEvent, useFrame } from "@react-three/fiber";
+import { type ThreeEvent, useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
 	Mesh,
@@ -23,6 +23,7 @@ interface Props {
 /** The GLB built by blender/build.py, with Hotspot and Prop behaviour attached. */
 export function Creamery({ onHotspot, motion }: Props) {
 	const { scene } = useGLTF(MODEL_URL, DRACO_PATH);
+	const maxAnisotropy = useThree((s) => s.gl.capabilities.getMaxAnisotropy());
 	const [hovered, setHovered] = useState<string | null>(null);
 	// Hover is decided once per pointer-move: the scene handler records which
 	// Hotspot (if any) the ray hit, and a document-level listener, which runs
@@ -43,10 +44,16 @@ export function Creamery({ onHotspot, motion }: Props) {
 		hotspots.current.clear();
 		scene.traverse((o) => {
 			if (!(o instanceof Mesh)) return;
+			// Clicks on the pavement fall through to the Canvas, so clicking
+			// the ground still returns to Street View as the road does.
+			if (o.name === "street") o.raycast = () => {};
 			// Lighting is baked into the textures (ADR 0001), so baked meshes
 			// render unlit. Emissive meshes keep their material for bloom.
 			const std = o.material as MeshStandardMaterial;
 			if (std.map && !hasEmission(std)) {
+				// Keeps the atlases sharp on surfaces seen at a glancing angle,
+				// like the counter top and the sidewalk.
+				std.map.anisotropy = Math.min(8, maxAnisotropy);
 				o.material = new MeshBasicMaterial({ map: std.map });
 			}
 			if (o.name.startsWith("prop_fan_")) fans.current.push(o);
@@ -63,7 +70,7 @@ export function Creamery({ onHotspot, motion }: Props) {
 			}
 		});
 		return scene;
-	}, [scene]);
+	}, [scene, maxAnisotropy]);
 
 	useEffect(() => {
 		const commit = () => {
