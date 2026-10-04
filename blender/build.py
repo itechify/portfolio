@@ -1029,6 +1029,7 @@ def shorts_tv(m):
     image.scale(432, 768)
     texture = poster.node_tree.nodes.new("ShaderNodeTexImage")
     texture.image = image
+    texture.interpolation = "Closest"  # Keep the pixel-art edges crisp.
     poster.node_tree.links.new(texture.outputs["Color"], poster.node_tree.nodes["Principled BSDF"].inputs["Emission Color"])
     mesh = bpy.data.meshes.new("tv_poster")
     mesh.from_pydata([(-0.45, -0.16, -0.8), (0.45, -0.16, -0.8), (0.45, -0.16, 0.8), (-0.45, -0.16, 0.8)], [], [(0, 1, 2, 3)])

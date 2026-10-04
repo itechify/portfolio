@@ -90,7 +90,7 @@ export const SECTIONS: readonly SectionDef[] = [
 					</a>
 					, played through YouTube.
 				</li>
-				<li>TV idle bouldering image: generated with OpenAI.</li>
+				<li>TV idle bouldering pixel art: generated with OpenAI.</li>
 			</ul>
 		),
 	},
