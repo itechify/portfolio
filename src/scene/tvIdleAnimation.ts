@@ -10,6 +10,14 @@ import {
 // Climb, settle, then return through the same poses for a seamless idle loop.
 const FRAMES = [0, 0, 1, 2, 3, 3, 2, 1];
 const FRAME_SECONDS = 0.45;
+// The generated sheet has generous empty margins. Register each pose against
+// the boulder's top corner so the rock stays still while the person climbs.
+const ATLAS_ORIGINS = [
+	[0, 0],
+	[459, 0],
+	[0, 783],
+	[459, 783],
+];
 
 /** Owns only the idle screen's cloned material and the supplied frame atlas. */
 export function createTvIdleAnimation(root: Object3D, atlas: Texture) {
@@ -23,7 +31,7 @@ export function createTvIdleAnimation(root: Object3D, atlas: Texture) {
 	atlas.magFilter = NearestFilter;
 	atlas.minFilter = NearestFilter;
 	atlas.generateMipmaps = false;
-	atlas.repeat.set(0.5, 0.5);
+	atlas.repeat.set(470 / 941, 836 / 1672);
 	atlas.needsUpdate = true;
 	root.traverse((object) => {
 		if (
@@ -45,7 +53,8 @@ export function createTvIdleAnimation(root: Object3D, atlas: Texture) {
 			// Don't jump ahead after a background tab or a suspended frame.
 			elapsed = active ? elapsed + Math.min(Math.max(delta, 0), 0.05) : 0;
 			const frame = FRAMES[Math.floor(elapsed / FRAME_SECONDS) % FRAMES.length];
-			atlas.offset.set((frame % 2) * 0.5, Math.floor(frame / 2) * 0.5);
+			const [x, y] = ATLAS_ORIGINS[frame];
+			atlas.offset.set(x / 941, y / 1672);
 			for (const { mesh, original, animated } of screens) {
 				mesh.material = active ? animated : original;
 			}
