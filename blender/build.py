@@ -1003,6 +1003,60 @@ def upper(m):
             box(f"fan_grille_{i}_{g}", (x, -1.49, 4.45 + g * 0.2), (0.66, 0.01, 0.02), m.ink)
 
 
+def shorts_tv(m):
+    """A portrait TV on an angled bracket around the right exterior corner.
+
+    After Y-up export the anchor's local XY plane is the live DOM screen;
+    its +Z faces the viewer. Width/height are exported as extras.
+    """
+    origin = Vector((3.38, -0.95, 4.48))
+    # Keep the mount around the corner, but aim the face toward Street View.
+    turn = Matrix.Rotation(math.radians(-10), 4, "Z")
+    parts = []
+
+    def panel(name, center, size, material):
+        o = box(name, center, size, material)
+        parts.append(o)
+        return o
+
+    plate = panel("hotspot_shorts_tv", (0, 0, 0), (1.08, 0.24, 1.82), m.ink)
+    panel("tv_trim", (0, -0.125, 0), (0.98, 0.025, 1.70), m.neon_soft)
+    panel("tv_screen", (0, -0.145, 0), (0.9, 0.02, 1.6), m.screen_dark)
+    # Idle artwork only: the live Shorts Section remains DOM (ADR 0002).
+    # One small emissive texture keeps the image readable without scene lights.
+    poster = mat("tv_bouldering_poster", "ink", emit="white", strength=0.9)
+    image = bpy.data.images.load(os.path.join(ROOT, "blender", "textures", "tv-bouldering.png"))
+    image.scale(432, 768)
+    texture = poster.node_tree.nodes.new("ShaderNodeTexImage")
+    texture.image = image
+    texture.interpolation = "Closest"  # Keep the pixel-art edges crisp.
+    poster.node_tree.links.new(texture.outputs["Color"], poster.node_tree.nodes["Principled BSDF"].inputs["Emission Color"])
+    mesh = bpy.data.meshes.new("tv_poster")
+    mesh.from_pydata([(-0.45, -0.16, -0.8), (0.45, -0.16, -0.8), (0.45, -0.16, 0.8), (-0.45, -0.16, 0.8)], [], [(0, 1, 2, 3)])
+    uv = mesh.uv_layers.new(name="poster")
+    for loop, coord in zip(uv.data, [(0, 0), (1, 0), (1, 1), (0, 1)]):
+        loop.uv = coord
+    face = _link(bpy.data.objects.new("tv_poster", mesh))
+    mesh.materials.append(poster)
+    parts.append(face)
+    panel("tv_status_light", (0.38, -0.14, -0.86), (0.035, 0.02, 0.018), m.neon_pink)
+    # Rotate all authored front-facing parts as one assembly.
+    for o in parts:
+        o.matrix_world = Matrix.Translation(origin) @ turn @ o.matrix_world
+    bpy.context.view_layer.update()
+    parent(parts[1:], plate)
+
+    box("tv_wall_bracket", (2.87, -0.55, 4.48), (0.14, 0.4, 0.65), m.steel)
+    tube("tv_mount_arm", [(2.91, -0.55, 4.48), (3.20, -0.55, 4.48), (3.38, -0.89, 4.48)], 0.07, m.ink)
+    tube("tv_power", [(2.86, -0.55, 4.2), (2.89, -0.55, 3.5), (2.85, -0.3, 3.15)], 0.018, m.ink)
+    anchor = _link(bpy.data.objects.new("tv_screen_anchor", None))
+    # Empties' local axes are also converted by the exporter: Blender -Y
+    # becomes glTF +Z, and Blender +Z becomes glTF +Y.
+    anchor.matrix_world = Matrix.Translation(origin) @ turn @ Matrix.Translation((0, -0.18, 0))
+    anchor["screenWidth"] = 0.9
+    anchor["screenHeight"] = 1.6
+
+
 def rooftop(m):
     box("roof", (0, 0.1, 5.65), (5.6, 3.0, 0.1), m.blue_deep)
     for name, c, s in (
@@ -1186,6 +1240,7 @@ def lights_and_cameras(scene):
         ("upper", (0.5, -7.5, 5.4), (0.5, 0, 5.3), 40),
         ("skadi", (-1.60, -2.15, 1.38), (-1.85, -1.28, 1.16), 50),
         ("freya", (-0.35, -2.15, 1.38), (-0.13, -1.28, 1.16), 50),
+        ("tv", (2.7, -4.8, 4.6), (3.38, -0.95, 4.48), 45),
     ):
         bpy.ops.object.camera_add(location=loc)
         cam = bpy.context.object
@@ -1206,6 +1261,7 @@ def build():
     counter_interior(m)
     sign(m)
     upper(m)
+    shorts_tv(m)
     rooftop(m)
     kiosk(m)
     machine(m)
@@ -1425,7 +1481,7 @@ def export():
     os.makedirs(os.path.dirname(GLB_PATH), exist_ok=True)
     bpy.ops.object.select_all(action="DESELECT")
     for o in bpy.data.objects:
-        if o.type == "MESH" or o.name.startswith("rig_"):
+        if o.type == "MESH" or o.name.startswith("rig_") or o.name == "tv_screen_anchor":
             o.select_set(True)
     bpy.ops.export_scene.gltf(
         filepath=GLB_PATH,
@@ -1435,6 +1491,7 @@ def export():
         export_lights=False,
         export_cameras=False,
         export_yup=True,
+        export_extras=True,
         export_image_format="WEBP",
         export_image_quality=85,
         export_draco_mesh_compression_enable=True,

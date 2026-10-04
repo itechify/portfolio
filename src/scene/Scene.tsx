@@ -12,11 +12,13 @@ import {
 import { BackSide, Box3, Color, MathUtils, Vector3 } from "three";
 import { type Station, type StationId, stationByHotspot } from "../stations";
 import { Creamery } from "./Creamery";
+import { TvProjection } from "./TvProjection";
 
 interface Props {
 	station: Station;
 	onStation: (id: StationId) => void;
 	motion: boolean;
+	tv: Parameters<typeof TvProjection>[0];
 }
 
 /** Street View framing, in three.js coordinates (the GLB is exported Y-up). */
@@ -31,6 +33,7 @@ const HORIZON = "#160d33";
 function Rig({ station, motion }: { station: Station; motion: boolean }) {
 	const controls = useRef<CameraControls>(null);
 	const scene = useThree((s) => s.scene);
+	const size = useThree((s) => s.size);
 
 	useEffect(() => {
 		const c = controls.current;
@@ -41,6 +44,24 @@ function Rig({ station, motion }: { station: Station; motion: boolean }) {
 				...STREET_TARGET.toArray(),
 				motion,
 			);
+			return;
+		}
+		if (station.id === "shorts") {
+			const anchor = scene.getObjectByName("tv_screen_anchor");
+			if (!anchor) return;
+			anchor.updateWorldMatrix(true, false);
+			const center = anchor.getWorldPosition(new Vector3());
+			const normal = new Vector3(0, 0, 1).transformDirection(
+				anchor.matrixWorld,
+			);
+			// Reserve breathing room for the housing and Station Menu. The
+			// narrow layout uses a panel, so it can keep a wider camera frame.
+			const narrow = size.width <= 900 || size.height <= 680;
+			const distance = narrow
+				? station.distance
+				: 1.6 / (2 * Math.tan(MathUtils.degToRad(20)) * 0.7);
+			const eye = center.clone().addScaledVector(normal, distance);
+			c.setLookAt(...eye.toArray(), ...center.toArray(), motion);
 			return;
 		}
 		const target = scene.getObjectByName(station.hotspot);
@@ -55,12 +76,13 @@ function Rig({ station, motion }: { station: Station; motion: boolean }) {
 			center.z,
 			motion,
 		);
-	}, [station, scene, motion]);
+	}, [station, scene, motion, size.width, size.height]);
 
 	return (
 		<CameraControls
 			ref={controls}
 			makeDefault
+			enabled={station.id !== "shorts"}
 			minAzimuthAngle={MathUtils.degToRad(-60)}
 			maxAzimuthAngle={MathUtils.degToRad(60)}
 			minPolarAngle={MathUtils.degToRad(50)}
@@ -154,7 +176,7 @@ function Street() {
 	);
 }
 
-export function Scene({ station, onStation, motion }: Props) {
+export function Scene({ station, onStation, motion, tv }: Props) {
 	return (
 		<Canvas
 			dpr={[1, 2]}
@@ -165,7 +187,11 @@ export function Scene({ station, onStation, motion }: Props) {
 				far: 100,
 			}}
 			gl={{ antialias: false, powerPreference: "high-performance" }}
-			onPointerMissed={() => station.id !== "street" && onStation("street")}
+			onPointerMissed={() =>
+				station.id !== "street" &&
+				station.id !== "shorts" &&
+				onStation("street")
+			}
 		>
 			<color attach="background" args={[SKY_TOP]} />
 			<fog attach="fog" args={[HORIZON, 22, 70]} />
@@ -174,6 +200,7 @@ export function Scene({ station, onStation, motion }: Props) {
 			<Suspense fallback={null}>
 				<Creamery
 					motion={motion}
+					tvActive={station.id === "shorts"}
 					onHotspot={(name) => {
 						const s = stationByHotspot(name);
 						if (s) onStation(s.id);
@@ -182,6 +209,7 @@ export function Scene({ station, onStation, motion }: Props) {
 				<Street />
 			</Suspense>
 			<Rig station={station} motion={motion} />
+			<TvProjection {...tv} />
 			<EffectComposer multisampling={0}>
 				{/* Baked textures top out at 1.0, so only emissives above it bloom. */}
 				<Bloom

@@ -83,6 +83,17 @@ export const SECTIONS: readonly SectionDef[] = [
 				</li>
 				<li>Built with Three.js, React Three Fiber, drei, and Blender.</li>
 				<li>Music and sound: to be credited when added.</li>
+				<li>
+					TV videos and their audio:{" "}
+					<a href="https://www.youtube.com/@BetaByJ/shorts">
+						BetaByJ (Jeffrey Davis)
+					</a>
+					, played through YouTube.
+				</li>
+				<li>
+					TV idle bouldering pixel art and animation frames: generated with
+					OpenAI.
+				</li>
 			</ul>
 		),
 	},
@@ -110,6 +121,7 @@ export function Sections({ current, plain = false, onClose }: Props) {
 						id={s.id}
 						className={active ? "section" : "section section--inactive"}
 						aria-hidden={active ? undefined : true}
+						inert={!active}
 					>
 						<h2 className="pixel">{s.title}</h2>
 						{s.body}

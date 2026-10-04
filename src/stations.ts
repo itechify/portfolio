@@ -1,5 +1,11 @@
 /** A Section is one body of portfolio content. See CONTEXT.md. */
-export type SectionId = "about" | "projects" | "resume" | "contact" | "credits";
+export type SectionId =
+	| "about"
+	| "projects"
+	| "resume"
+	| "contact"
+	| "credits"
+	| "shorts";
 
 /** A Station is a framed camera view. Street View is the default one. */
 export type StationId = "street" | SectionId;
@@ -11,6 +17,8 @@ export interface Station {
 	hotspot: string;
 	/** Camera distance in front of the Hotspot when framed. */
 	distance: number;
+	/** Discovery-only Stations have an accessible Hotspot instead of a menu entry. */
+	hidden?: boolean;
 }
 
 export const STATIONS: readonly Station[] = [
@@ -49,6 +57,13 @@ export const STATIONS: readonly Station[] = [
 		label: "Credits",
 		hotspot: "hotspot_credits_monitor",
 		distance: 5,
+	},
+	{
+		id: "shorts",
+		label: "BetaByJ Shorts",
+		hotspot: "hotspot_shorts_tv",
+		distance: 3.3,
+		hidden: true,
 	},
 ];
 
