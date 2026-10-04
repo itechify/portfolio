@@ -1010,7 +1010,8 @@ def shorts_tv(m):
     its +Z faces the viewer. Width/height are exported as extras.
     """
     origin = Vector((3.38, -0.95, 4.48))
-    turn = Matrix.Rotation(math.radians(55), 4, "Z")
+    # Keep the mount around the corner, but aim the face toward Street View.
+    turn = Matrix.Rotation(math.radians(-10), 4, "Z")
     parts = []
 
     def panel(name, center, size, material):
@@ -1021,9 +1022,22 @@ def shorts_tv(m):
     plate = panel("hotspot_shorts_tv", (0, 0, 0), (1.08, 0.24, 1.82), m.ink)
     panel("tv_trim", (0, -0.125, 0), (0.98, 0.025, 1.70), m.neon_soft)
     panel("tv_screen", (0, -0.145, 0), (0.9, 0.02, 1.6), m.screen_dark)
-    parts.append(text("tv_poster_beta", "Beta", 0.17, m.cow_white, (0, -0.17, 0.20), extrude=0.001))
-    parts.append(text("tv_poster_byj", "ByJ", 0.17, m.cow_white, (0, -0.17, -0.05), extrude=0.001))
-    parts.append(text("tv_poster_shorts", "SHORTS", 0.065, m.neon_soft, (0, -0.17, -0.40), extrude=0.001))
+    # Idle artwork only: the live Shorts Section remains DOM (ADR 0002).
+    # One small emissive texture keeps the image readable without scene lights.
+    poster = mat("tv_bouldering_poster", "ink", emit="white", strength=0.9)
+    image = bpy.data.images.load(os.path.join(ROOT, "blender", "textures", "tv-bouldering.png"))
+    image.scale(432, 768)
+    texture = poster.node_tree.nodes.new("ShaderNodeTexImage")
+    texture.image = image
+    poster.node_tree.links.new(texture.outputs["Color"], poster.node_tree.nodes["Principled BSDF"].inputs["Emission Color"])
+    mesh = bpy.data.meshes.new("tv_poster")
+    mesh.from_pydata([(-0.45, -0.16, -0.8), (0.45, -0.16, -0.8), (0.45, -0.16, 0.8), (-0.45, -0.16, 0.8)], [], [(0, 1, 2, 3)])
+    uv = mesh.uv_layers.new(name="poster")
+    for loop, coord in zip(uv.data, [(0, 0), (1, 0), (1, 1), (0, 1)]):
+        loop.uv = coord
+    face = _link(bpy.data.objects.new("tv_poster", mesh))
+    mesh.materials.append(poster)
+    parts.append(face)
     panel("tv_status_light", (0.38, -0.14, -0.86), (0.035, 0.02, 0.018), m.neon_pink)
     # Rotate all authored front-facing parts as one assembly.
     for o in parts:
@@ -1225,7 +1239,7 @@ def lights_and_cameras(scene):
         ("upper", (0.5, -7.5, 5.4), (0.5, 0, 5.3), 40),
         ("skadi", (-1.60, -2.15, 1.38), (-1.85, -1.28, 1.16), 50),
         ("freya", (-0.35, -2.15, 1.38), (-0.13, -1.28, 1.16), 50),
-        ("tv", (6.5, -3.2, 4.6), (3.38, -0.95, 4.48), 45),
+        ("tv", (2.7, -4.8, 4.6), (3.38, -0.95, 4.48), 45),
     ):
         bpy.ops.object.camera_add(location=loc)
         cam = bpy.context.object

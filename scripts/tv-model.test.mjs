@@ -4,7 +4,7 @@ import test from "node:test";
 import { Object3D, Vector3 } from "three";
 import { STATIONS } from "../src/stations.ts";
 
-test("the shipped TV has a hidden Station and a portrait anchor facing around the right corner", () => {
+test("the shipped TV has a hidden Station and a portrait anchor facing Street View", () => {
 	const bytes = readFileSync(
 		new URL("../public/models/creamery.glb", import.meta.url),
 	);
@@ -24,9 +24,12 @@ test("the shipped TV has a hidden Station and a portrait anchor facing around th
 	const normal = new Vector3(0, 0, 1).transformDirection(object.matrixWorld);
 	const up = new Vector3(0, 1, 0).transformDirection(object.matrixWorld);
 	assert.ok(object.position.x > 2.8, "screen must be outside the right wall");
+	const streetDirection = new Vector3(0, 4.2, 14)
+		.sub(object.position)
+		.normalize();
 	assert.ok(
-		normal.x > 0.7 && normal.z > 0.5,
-		"screen must face right and toward the street",
+		normal.dot(streetDirection) > 0.98,
+		"the screen must be nearly face-on from initial Street View",
 	);
 	assert.ok(up.y > 0.999, "DOM text must remain upright after the Y-up export");
 });

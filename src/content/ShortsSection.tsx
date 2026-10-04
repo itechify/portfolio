@@ -299,7 +299,6 @@ export function ShortsSection({
 				/>
 				{!ready && (
 					<div className="tv-loading">
-						<span className="pixel">BetaByJ</span>
 						<p>{message}</p>
 					</div>
 				)}

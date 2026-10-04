@@ -297,7 +297,7 @@ button.entry {
 }
 
 .tv-surface {
-	background: #07091a;
+	background: transparent;
 	pointer-events: auto;
 }
 
@@ -319,11 +319,7 @@ button.entry {
 	padding: 2rem;
 	text-align: center;
 	color: var(--teal);
-	background: radial-gradient(ellipse at 50% 20%, #22364b, #07091a 75%);
-}
-
-.tv-loading span {
-	font-size: 1.5rem;
+	background: rgb(7 9 26 / 0.3);
 }
 
 .tv-loading p {
