@@ -1,6 +1,7 @@
 // Screenshots the running dev server at Street View and at each Station.
 // Usage: node scripts/shot.mjs [baseUrl]   (default http://localhost:5173)
-import { mkdirSync } from "node:fs";
+import assert from "node:assert/strict";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { chromium, expect } from "@playwright/test";
 
 const base = process.argv[2] ?? "http://localhost:5173";
@@ -25,6 +26,41 @@ await page
 	.click({ timeout: 60_000 });
 await page.waitForTimeout(2500);
 await page.screenshot({ path: `${out}/street.png` });
+
+if (process.argv.includes("--tv-idle")) {
+	// Interior of the TV in the fixed 1280 × 800 Street View: exclude the
+	// glowing bezel, fans and characters so only the climber changes pixels.
+	const clip = { x: 894, y: 218, width: 65, height: 127 };
+	await page.waitForTimeout(2000);
+	const poses = new Map();
+	for (let i = 0; i < 8; i++) {
+		const png = await page.screenshot({ clip });
+		poses.set(png.toString("base64"), png);
+		await page.waitForTimeout(350);
+	}
+	assert.ok(poses.size > 1, "idle TV must visibly animate after Entry");
+	[...poses.values()].forEach((png, i) => {
+		writeFileSync(`${out}/tv-idle-${i}.png`, png);
+	});
+	console.log("Visible idle TV poses:", poses.size);
+	const reduced = await browser.newPage({
+		viewport: { width: 1280, height: 800 },
+		reducedMotion: "reduce",
+	});
+	let requestedAtlas = false;
+	reduced.on("request", (request) => {
+		if (request.url().includes("tv-bouldering-loop")) requestedAtlas = true;
+	});
+	await reduced.goto(base);
+	await reduced.getByRole("button", { name: "Open the shop" }).click();
+	await reduced.waitForTimeout(3000);
+	const still = await reduced.screenshot({ clip });
+	await reduced.waitForTimeout(1500);
+	assert.deepEqual(await reduced.screenshot({ clip }), still);
+	assert.equal(requestedAtlas, false, "reduced motion does not load the atlas");
+	console.log("Reduced motion: unchanged TV pixels; no animation download");
+	await reduced.close();
+}
 
 for (const label of process.argv.includes("--tv-only")
 	? []

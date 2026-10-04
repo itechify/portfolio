@@ -90,7 +90,10 @@ export const SECTIONS: readonly SectionDef[] = [
 					</a>
 					, played through YouTube.
 				</li>
-				<li>TV idle bouldering pixel art: generated with OpenAI.</li>
+				<li>
+					TV idle bouldering pixel art and animation frames: generated with
+					OpenAI.
+				</li>
 			</ul>
 		),
 	},

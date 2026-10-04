@@ -6,9 +6,11 @@ import {
 	MeshBasicMaterial,
 	MeshStandardMaterial,
 	type Object3D,
+	TextureLoader,
 } from "three";
 import { stationByHotspot } from "../stations";
 import { createCharacterMotion } from "./characterMotion";
+import { createTvIdleAnimation } from "./tvIdleAnimation";
 
 const MODEL_URL = "/models/creamery.glb";
 const DRACO_PATH = "/draco/";
@@ -19,10 +21,11 @@ const hasEmission = (m: MeshStandardMaterial) =>
 interface Props {
 	onHotspot: (name: string) => void;
 	motion: boolean;
+	tvActive: boolean;
 }
 
 /** The GLB built by blender/build.py, with Hotspot and Prop behaviour attached. */
-export function Creamery({ onHotspot, motion }: Props) {
+export function Creamery({ onHotspot, motion, tvActive }: Props) {
 	const { scene } = useGLTF(MODEL_URL, DRACO_PATH);
 	const maxAnisotropy = useThree((s) => s.gl.capabilities.getMaxAnisotropy());
 	const [hovered, setHovered] = useState<string | null>(null);
@@ -32,6 +35,7 @@ export function Creamery({ onHotspot, motion }: Props) {
 	// child mesh as the cursor crosses a Hotspot's detail, causing flicker.
 	const hit = useRef<string | null>(null);
 	const fans = useRef<Object3D[]>([]);
+	const tvIdle = useRef<ReturnType<typeof createTvIdleAnimation> | null>(null);
 	// Emissive plates glow by raising emission; baked (unlit) plates glow by
 	// scaling their colour above white, which the bloom pass then picks up.
 	const hotspots = useRef(
@@ -75,6 +79,26 @@ export function Creamery({ onHotspot, motion }: Props) {
 	const animateCharacters = useMemo(() => createCharacterMotion(root), [root]);
 
 	useEffect(() => {
+		if (!motion) return;
+		let cancelled = false;
+		// Load after Entry only; the model's still remains a complete fallback.
+		new TextureLoader().load(
+			"/images/tv-bouldering-loop.png",
+			(atlas) => {
+				if (cancelled) atlas.dispose();
+				else tvIdle.current = createTvIdleAnimation(root, atlas);
+			},
+			undefined,
+			() => {}, // Keep the still if the optional animation cannot load.
+		);
+		return () => {
+			cancelled = true;
+			tvIdle.current?.dispose();
+			tvIdle.current = null;
+		};
+	}, [root, motion]);
+
+	useEffect(() => {
 		const commit = () => {
 			const name = hit.current;
 			hit.current = null;
@@ -93,6 +117,7 @@ export function Creamery({ onHotspot, motion }: Props) {
 
 	useFrame((state, delta) => {
 		animateCharacters(delta, motion);
+		if (!document.hidden) tvIdle.current?.update(delta, motion && !tvActive);
 		// The glTF exporter converts Blender's Z-up mesh data to Y-up, so the
 		// cylinder axis the blades were built around is local Y here.
 		if (motion) for (const fan of fans.current) fan.rotateY(delta * 6);
