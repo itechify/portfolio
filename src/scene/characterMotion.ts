@@ -1,0 +1,108 @@
+import type { Object3D } from "three";
+
+/** A soft, occasional gesture with a still interval between repetitions. */
+function gesture(
+	time: number,
+	period: number,
+	start: number,
+	duration: number,
+) {
+	const phase = (time % period) - start;
+	if (phase <= 0 || phase >= duration) return 0;
+	return Math.sin((phase / duration) * Math.PI) ** 2;
+}
+
+function blink(time: number, period: number) {
+	return 1 - 0.94 * gesture(time, period, 0.4, 0.22);
+}
+
+/** Bind once. Per-frame work only changes a few rigid pivots, with no allocations.
+ * Small gestures keep the baked lighting convincing (ADR 0001).
+ * Blender exports these unrotated Empty pivots in glTF's Y-up coordinates.
+ */
+export function createCharacterMotion(root: Object3D) {
+	const cats = [1, 2].map((id) => ({
+		id,
+		body: `prop_cat_${id}_body`,
+		head: `prop_cat_${id}_head`,
+		eyes: `prop_cat_${id}_eyes`,
+		tail: `prop_cat_${id}_tail`,
+	}));
+	const names = [
+		"barista_head",
+		"barista_eyes",
+		"barista_cup",
+		"barista_tray",
+		...([1, 2] as const).flatMap((id) =>
+			["body", "head", "eyes", "tail"].map((part) => `prop_cat_${id}_${part}`),
+		),
+	];
+	const joints = new Map(
+		names.flatMap((name) => {
+			const object = root.getObjectByName(`rig_${name}`);
+			return object
+				? [
+						[
+							name,
+							{
+								object,
+								rotation: object.rotation.clone(),
+								scale: object.scale.clone(),
+							},
+						] as const,
+					]
+				: [];
+		}),
+	);
+	function rotate(name: string, x: number, y: number, z = 0) {
+		const joint = joints.get(name);
+		if (!joint) return;
+		joint.object.rotation.set(
+			joint.rotation.x + x,
+			joint.rotation.y + y,
+			joint.rotation.z + z,
+		);
+	}
+	function stretch(name: string, y: number) {
+		const joint = joints.get(name);
+		if (joint) joint.object.scale.y = joint.scale.y * y;
+	}
+	let time = 0;
+	let moving = false;
+	return (delta: number, enabled: boolean) => {
+		if (!enabled) {
+			if (moving) {
+				for (const joint of joints.values()) {
+					joint.object.rotation.copy(joint.rotation);
+					joint.object.scale.copy(joint.scale);
+				}
+			}
+			moving = false;
+			time = 0;
+			return;
+		}
+		moving = true;
+		// Do not jump through a gesture after a background tab or a long frame.
+		time += Math.min(delta, 0.05);
+		const serve = gesture(time, 13, 3, 4);
+		const glance = gesture(time, 17, 9, 5);
+		rotate("barista_head", 0.065 * serve, 0.16 * glance - 0.09 * serve);
+		rotate("barista_cup", -0.12 * serve, 0);
+		rotate("barista_tray", -0.035 * gesture(time, 13, 3.5, 4), 0);
+		stretch("barista_eyes", blink(time, 6.7));
+		for (const cat of cats) {
+			const { id } = cat;
+			const t = time + (id === 1 ? 0 : 3.1);
+			const look = gesture(t, 15 + id, 4, 5);
+			stretch(cat.body, 1 + 0.012 * Math.sin(t * 1.7));
+			rotate(
+				cat.head,
+				-0.035 * look,
+				(id === 1 ? 0.2 : -0.17) * look,
+				0.045 * look,
+			);
+			rotate(cat.tail, 0, 0.17 * Math.sin(t * 1.3) * gesture(t, 9 + id, 1, 6));
+			stretch(cat.eyes, blink(t, 5.3 + id * 0.8));
+		}
+	};
+}
