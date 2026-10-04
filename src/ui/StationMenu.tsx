@@ -5,12 +5,12 @@ interface Props {
 	onSelect: (id: StationId) => void;
 }
 
-/** The always-visible Station Menu: the keyboard route to every Section. */
+/** The Station Menu omits discovery-only Stations, which have DOM Hotspots. */
 export function StationMenu({ current, onSelect }: Props) {
 	return (
 		<nav className="station-menu" aria-label="Stations">
 			<ul>
-				{STATIONS.map((s) => (
+				{STATIONS.filter((s) => !s.hidden).map((s) => (
 					<li key={s.id}>
 						<button
 							type="button"
