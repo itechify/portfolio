@@ -8,6 +8,7 @@ Contracts with the web code (src/scene/Creamery.tsx):
   src/stations.ts. Its detail is parented to it with names that do NOT start
   with `hotspot_`, so clicks on detail still resolve to the Hotspot.
 - A spinning fan is one mesh named `prop_fan_N` whose local Z is the spin axis.
+- Character meshes stay under `rig_` pivots, animated in characterMotion.ts.
 - The road sits CURB below the sidewalk; the web draws its own road there.
 - Everything else is joined into baked meshes (see `regroup`), except
   emissive geometry, which keeps its material so it still blooms.
@@ -366,6 +367,15 @@ def parent(children, hotspot):
         c.matrix_parent_inverse = hotspot.matrix_world.inverted()
 
 
+def articulation(name, center, parts):
+    """A rigid character joint. Keep geometry in its authored world pose."""
+    pivot = _link(bpy.data.objects.new(name, None))
+    pivot.location = center
+    bpy.context.view_layer.update()
+    parent(parts, pivot)
+    return pivot
+
+
 def apply_modifiers(objs):
     """Bake each object's modifiers into its mesh; joining would drop them."""
     dg = bpy.context.evaluated_depsgraph_get()
@@ -405,7 +415,8 @@ def finalize():
             # stays faceted at real corners and smooth around curves. Leaves
             # and cats are coarse ellipsoids, so they smooth across wider angles.
             me.set_sharp_from_angle(angle=math.radians(80 if o.get("organic") else 40))
-        if o.name == "ground":
+        # Articulated Props expose different faces as they move.
+        if o.name == "ground" or (o.parent and o.parent.name.startswith("rig_")):
             continue
         to_world = o.matrix_world
         normal_to_world = to_world.to_3x3().inverted_safe().transposed()
@@ -571,34 +582,118 @@ def storefront(m):
 def cat(m, name, base, turn=0.0, tail_side=1):
     """A black cat sitting at `base`, facing -Y turned `turn` radians.
 
-    The body is one Prop mesh; the eyes are a separate emissive mesh so
-    they keep their glow in the browser."""
+    Separate body, head, eyes and tail pivots share one character atlas."""
     spin = Matrix.Rotation(turn, 3, "Z")
 
     def at(x, y, z):
         return tuple(Vector(base) + spin @ Vector((x, y, z)))
 
     s = tail_side
-    parts = [
+    body = articulation(f"rig_{name}_body", base, [
         blob(f"{name}_haunch", at(0, 0.03, 0.05), (0.1, 0.085, 0.06), m.ink, turn),
         blob(f"{name}_body", at(0, 0.01, 0.11), (0.08, 0.072, 0.1), m.ink, turn),
+        blob(f"{name}_paw_l", at(-0.038, -0.05, 0.019), (0.028, 0.04, 0.019), m.ink, turn),
+        blob(f"{name}_paw_r", at(0.038, -0.05, 0.019), (0.028, 0.04, 0.019), m.ink, turn),
+    ])
+    head = articulation(f"rig_{name}_head", at(0, -0.01, 0.19), [
         blob(f"{name}_head", at(0, -0.02, 0.225), (0.07, 0.062, 0.06), m.ink, turn),
         blob(f"{name}_muzzle", at(0, -0.07, 0.205), (0.03, 0.02, 0.022), m.ink, turn),
         cone(f"{name}_ear_l", at(-0.04, -0.015, 0.285), 0.028, 0.0, 0.06, m.ink, rot=(0, -0.3, turn)),
         cone(f"{name}_ear_r", at(0.04, -0.015, 0.285), 0.028, 0.0, 0.06, m.ink, rot=(0, 0.3, turn)),
+    ])
+    articulation(f"rig_{name}_tail", at(s * 0.04, 0.09, 0.03), [
         tube(
             f"{name}_tail",
             [at(s * x, y, z) for x, y, z in ((0.04, 0.09, 0.03), (0.12, 0.04, 0.02), (0.11, -0.06, 0.016), (0.03, -0.1, 0.016))],
             0.015,
             m.ink,
         ),
-    ]
-    join(parts, name)
+    ])
     eyes = [
         blob(f"{name}_eye_l", at(-0.028, -0.078, 0.232), (0.013, 0.005, 0.015), m.neon, turn),
         blob(f"{name}_eye_r", at(0.028, -0.078, 0.232), (0.013, 0.005, 0.015), m.neon, turn),
     ]
-    join(eyes, f"{name}_eyes")
+    eyelids = articulation(f"rig_{name}_eyes", at(0, -0.078, 0.232), eyes)
+    parent([eyelids], head)
+    parent([head], body)
+
+
+def barista(m):
+    """A compact enamel service robot, with visible hinges and gripping hands."""
+    body = [
+        box("barista_chassis", (-0.9, -0.55, 1.3), (0.4, 0.32, 0.66), m.blue_deep),
+        box("barista_chest", (-0.9, -0.735, 1.48), (0.37, 0.06, 0.24), m.teal_pale),
+        box("barista_apron", (-0.9, -0.735, 1.17), (0.32, 0.045, 0.34), m.purple),
+        box("barista_pocket", (-0.9, -0.765, 1.21), (0.21, 0.02, 0.12), m.blue_mid),
+        box("barista_badge", (-0.9, -0.774, 1.49), (0.18, 0.018, 0.095), m.purple),
+        text("barista_badge_text", "JJ", 0.052, m.pink_pale, (-0.9, -0.787, 1.49), extrude=0.001),
+        cyl("barista_neck", (-0.9, -0.55, 1.67), 0.075, 0.13, m.steel),
+    ]
+    for z in (1.64, 1.675, 1.71):
+        body.append(cyl("barista_neck_ring", (-0.9, -0.55, z), 0.085, 0.014, m.ink))
+    for x in (-1.045, -0.755):
+        body.append(box("barista_apron_strap", (x, -0.775, 1.4), (0.035, 0.012, 0.36), m.pink))
+        body.append(cyl("barista_fastener", (x, -0.79, 1.51), 0.016, 0.012, m.steel, axis="Y"))
+    articulation("rig_barista_body", (-0.9, -0.55, 0.97), body)
+
+    head_parts = [
+        box("barista_head_shell", (-0.9, -0.55, 1.88), (0.4, 0.34, 0.32), m.purple),
+        box("barista_crown", (-0.9, -0.55, 2.035), (0.34, 0.29, 0.045), m.teal_pale),
+        box("barista_visor_rim", (-0.9, -0.726, 1.91), (0.355, 0.045, 0.19), m.steel_dull),
+        box("barista_visor", (-0.9, -0.752, 1.91), (0.315, 0.025, 0.15), m.ink),
+        box("barista_chin", (-0.9, -0.732, 1.775), (0.27, 0.035, 0.035), m.blue_mid),
+        cyl("barista_antenna", (-0.77, -0.52, 2.115), 0.012, 0.14, m.steel),
+        ball("barista_antenna_tip", (-0.77, -0.52, 2.19), 0.025, m.neon_pink, subdiv=2),
+    ]
+    for side in (-1, 1):
+        x = -0.9 + side * 0.215
+        head_parts.extend([
+            cyl("barista_ear_hinge", (x, -0.55, 1.89), 0.095, 0.055, m.steel, axis="X"),
+            cyl("barista_ear_cap", (x + side * 0.031, -0.55, 1.89), 0.064, 0.016, m.blue_mid, axis="X"),
+            cyl("barista_ear_light", (x + side * 0.042, -0.55, 1.89), 0.025, 0.008, m.neon_soft, axis="X"),
+        ])
+    for i in range(3):
+        head_parts.append(box("barista_mouth_vent", (-0.95 + i * 0.05, -0.758, 1.797), (0.028, 0.012, 0.012), m.ink))
+    head = articulation("rig_barista_head", (-0.9, -0.55, 1.71), head_parts)
+    eyes = articulation("rig_barista_eyes", (-0.9, -0.772, 1.925), [
+        box("barista_eye_l", (-0.968, -0.772, 1.925), (0.036, 0.012, 0.063), m.neon_soft),
+        box("barista_eye_r", (-0.832, -0.772, 1.925), (0.036, 0.012, 0.063), m.neon_soft),
+    ])
+    parent([eyes], head)
+
+    for side, suffix in ((-1, "tray"), (1, "cup")):
+        x = -0.9 + side * 0.28
+        # Upper arm stays at the shoulder; the forearm pivots at the elbow.
+        articulation(f"rig_barista_shoulder_{suffix}", (x, -0.55, 1.5), [
+            cyl("barista_shoulder", (x, -0.55, 1.49), 0.095, 0.1, m.steel, axis="X"),
+            box("barista_upper_arm", (x, -0.6, 1.35), (0.11, 0.12, 0.24), m.blue_mid, rot=(-0.3, 0, 0)),
+            cyl("barista_elbow", (x, -0.65, 1.25), 0.065, 0.13, m.purple, axis="X"),
+        ])
+        parts = [
+            box("barista_forearm", (x, -0.8, 1.25), (0.1, 0.28, 0.1), m.teal_pale),
+            box("barista_forearm_inset", (x, -0.8, 1.305), (0.05, 0.16, 0.012), m.blue_deep),
+            cyl("barista_wrist", (x, -0.96, 1.25), 0.039, 0.065, m.steel, axis="Y"),
+            box("barista_palm", (x, -1.005, 1.25), (0.11, 0.05, 0.065), m.purple),
+        ]
+        for grip in (-1, 1):
+            parts.append(box("barista_gripper", (x + grip * 0.052, -1.043, 1.275), (0.023, 0.07, 0.08), m.steel))
+        if suffix == "cup":
+            parts.extend([
+                cone("barista_cup", (x, -1.055, 1.31), 0.041, 0.052, 0.13, m.cream),
+                cyl("barista_cup_rim", (x, -1.055, 1.377), 0.056, 0.012, m.pink),
+                cyl("barista_milk", (x, -1.055, 1.38), 0.043, 0.006, m.white),
+                box("barista_cup_label", (x, -1.103, 1.32), (0.046, 0.008, 0.036), m.pink),
+            ])
+        else:
+            parts.extend([
+                cyl("barista_tray", (x, -1.04, 1.3), 0.13, 0.02, m.steel),
+                cyl("barista_tray_inset", (x, -1.04, 1.313), 0.112, 0.01, m.pink_pale),
+            ])
+            for i in range(2):
+                parts.append(cyl("barista_cookie", (x + (i - 0.5) * 0.09, -1.04, 1.33), 0.043, 0.024, m.cookie))
+                for dx, dy in ((-0.014, -0.01), (0.012, 0.015), (0.017, -0.02)):
+                    parts.append(ball("barista_choc_chip", (x + (i - 0.5) * 0.09 + dx, -1.04 + dy, 1.344), 0.006, m.choc))
+        articulation(f"rig_barista_{suffix}", (x, -0.65, 1.25), parts)
 
 
 def counter_interior(m):
@@ -668,20 +763,7 @@ def counter_interior(m):
     box("window_cat_ear_r", (0.11, 0.21, 1.96), (0.03, 0.02, 0.05), m.ink)
     box("window_cat_tail", (-0.12, 0.21, 1.82), (0.1, 0.02, 0.025), m.ink, rot=(0, math.radians(-30), 0))
 
-    # Barista robot: body, head with visor, arms, one holding a cup
-    box("prop_barista_body", (-0.9, -0.55, 1.3), (0.42, 0.34, 0.7), m.blue_mid)
-    box("prop_barista_belly", (-0.9, -0.73, 1.3), (0.22, 0.02, 0.24), m.screen_dark)
-    box("prop_barista_neck", (-0.9, -0.55, 1.68), (0.14, 0.14, 0.08), m.steel)
-    box("prop_barista_head", (-0.9, -0.55, 1.88), (0.36, 0.34, 0.32), m.purple)
-    box("prop_barista_visor", (-0.9, -0.73, 1.9), (0.28, 0.02, 0.1), m.screen)
-    box("prop_barista_eye_l", (-0.97, -0.745, 1.9), (0.04, 0.01, 0.05), m.ink)
-    box("prop_barista_eye_r", (-0.83, -0.745, 1.9), (0.04, 0.01, 0.05), m.ink)
-    cyl("prop_barista_antenna", (-0.9, -0.55, 2.1), 0.015, 0.14, m.steel)
-    ball("prop_barista_antenna_tip", (-0.9, -0.55, 2.18), 0.035, m.bulb_pink)
-    cyl("prop_barista_arm_l", (-1.16, -0.75, 1.3), 0.04, 0.5, m.steel, rot=(math.radians(60), 0, 0))
-    cyl("prop_barista_arm_r", (-0.64, -0.75, 1.3), 0.04, 0.5, m.steel, rot=(math.radians(60), 0, 0))
-    cyl("prop_barista_cup", (-0.64, -1.0, 1.15), 0.05, 0.1, m.white)
-    cyl("prop_barista_tray", (-1.18, -0.98, 1.1), 0.12, 0.015, m.steel)
+    barista(m)
     # Pendant lamps over the counter
     for i, x in enumerate((-2.0, -1.2, -0.4)):
         cyl(f"pendant_{i}_cord", (x, -0.9, 2.12), 0.008, 0.34, m.ink)
@@ -1059,15 +1141,23 @@ def regroup():
     Non-emissive geometry is joined into: the street, the building's lower
     and upper halves, one detail mesh per Hotspot, one mesh of Props. Emissive geometry is joined
     per material and never baked, so bloom and hover glow keep working. Fans,
-    Hotspot plates, and the ground stay as they are.
+    Hotspot plates, and the ground stay as they are. Character geometry is
+    joined per rigid pivot and shares one atlas, preserving articulation.
 
     Returns a list of (group name, objects, atlas size) to bake.
     """
     statics, emissive_statics, props, plates, pavement = [], {}, [], [], []
     per_hotspot = {}
+    per_joint = {}
     for o in mesh_objects():
         emis = is_emissive(o.data.materials[0]) if o.data.materials else False
-        if o.name.startswith("hotspot_") and not emis:
+        if o.parent is not None and o.parent.name.startswith("rig_"):
+            d = per_joint.setdefault(o.parent.name, {"detail": [], "glow": {}})
+            if emis:
+                d["glow"].setdefault(o.data.materials[0].name, []).append(o)
+            else:
+                d["detail"].append(o)
+        elif o.name.startswith("hotspot_") and not emis:
             plates.append(o)  # baked alone; the web scales its colour on hover
         elif o.parent is not None and o.parent.name.startswith("hotspot_"):
             d = per_hotspot.setdefault(o.parent.name, {"detail": [], "glow": {}})
@@ -1114,6 +1204,14 @@ def regroup():
     fans = [o for o in mesh_objects() if o.name.startswith("prop_fan_")]
     if fans:
         groups.append(("fans", fans, 256))
+    characters = []
+    for joint, d in per_joint.items():
+        if d["detail"]:
+            characters.append(join(d["detail"], f"{joint}_detail"))
+        for key, objs in d["glow"].items():
+            join(objs, f"{joint}_glow_{key}")
+    if characters:
+        groups.append(("characters", characters, 1024))
     return groups
 
 
@@ -1207,8 +1305,9 @@ def export():
     images = len([i for i in bpy.data.images if i.name.startswith("bake_")])
     os.makedirs(os.path.dirname(GLB_PATH), exist_ok=True)
     bpy.ops.object.select_all(action="DESELECT")
-    for o in mesh_objects():
-        o.select_set(True)
+    for o in bpy.data.objects:
+        if o.type == "MESH" or o.name.startswith("rig_"):
+            o.select_set(True)
     bpy.ops.export_scene.gltf(
         filepath=GLB_PATH,
         export_format="GLB",

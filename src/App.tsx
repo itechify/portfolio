@@ -49,7 +49,7 @@ export function App() {
 			<Scene
 				station={stationById(station)}
 				onStation={setStation}
-				motion={!reducedMotion}
+				motion={entered && !reducedMotion}
 			/>
 			{!entered && <Loader onEnter={() => setEntered(true)} />}
 			{entered && (

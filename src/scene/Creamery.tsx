@@ -8,6 +8,7 @@ import {
 	type Object3D,
 } from "three";
 import { stationByHotspot } from "../stations";
+import { createCharacterMotion } from "./characterMotion";
 
 const MODEL_URL = "/models/creamery.glb";
 const DRACO_PATH = "/draco/";
@@ -71,6 +72,7 @@ export function Creamery({ onHotspot, motion }: Props) {
 		});
 		return scene;
 	}, [scene, maxAnisotropy]);
+	const animateCharacters = useMemo(() => createCharacterMotion(root), [root]);
 
 	useEffect(() => {
 		const commit = () => {
@@ -90,6 +92,7 @@ export function Creamery({ onHotspot, motion }: Props) {
 	}, [hovered]);
 
 	useFrame((state, delta) => {
+		animateCharacters(delta, motion);
 		// The glTF exporter converts Blender's Z-up mesh data to Y-up, so the
 		// cylinder axis the blades were built around is local Y here.
 		if (motion) for (const fan of fans.current) fan.rotateY(delta * 6);
