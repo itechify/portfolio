@@ -579,41 +579,154 @@ def storefront(m):
     ball("prop_trash_bag", (1.32, -1.9, 0.16), 0.17, m.ink, subdiv=2)
 
 
-def cat(m, name, base, turn=0.0, tail_side=1):
-    """A black cat sitting at `base`, facing -Y turned `turn` radians.
+def cat(name, base, identity, turn=0.0, tail_side=1):
+    """Skadi (long-haired brown tabby) or Freya (short-haired gray bicolor).
 
-    Separate body, head, eyes and tail pivots share one character atlas."""
+    Authored coat colors survive regrouping as vertex colors, then bake into
+    the existing character atlas. The numbered pivots are the web animation
+    contract; identity changes the likeness without changing those joints.
+    Photos are visual references only and are not needed to rebuild."""
     spin = Matrix.Rotation(turn, 3, "Z")
+    fluffy = identity == "Skadi"
+    # Reserve headroom for the strong counter lights in the Standard bake.
+    white = srgb("bab7b0")
+    coat = srgb("705640" if fluffy else "636669")
+    stripe = srgb("302820" if fluffy else "484d50")
+    pink = srgb("b77c79")
+    dark = srgb("242323")
+    iris = srgb("657f54" if fluffy else "839752")
+    fur = bpy.data.materials.get("cat_fur")
+    if fur is None:
+        fur = bpy.data.materials.new("cat_fur")
+        fur.use_nodes = True
+        bsdf = fur.node_tree.nodes["Principled BSDF"]
+        bsdf.inputs["Roughness"].default_value = 0.85
+        color = fur.node_tree.nodes.new("ShaderNodeVertexColor")
+        color.layer_name = "cat_coat"
+        fur.node_tree.links.new(color.outputs["Color"], bsdf.inputs["Base Color"])
 
     def at(x, y, z):
         return tuple(Vector(base) + spin @ Vector((x, y, z)))
 
-    s = tail_side
-    body = articulation(f"rig_{name}_body", base, [
-        blob(f"{name}_haunch", at(0, 0.03, 0.05), (0.1, 0.085, 0.06), m.ink, turn),
-        blob(f"{name}_body", at(0, 0.01, 0.11), (0.08, 0.072, 0.1), m.ink, turn),
-        blob(f"{name}_paw_l", at(-0.038, -0.05, 0.019), (0.028, 0.04, 0.019), m.ink, turn),
-        blob(f"{name}_paw_r", at(0.038, -0.05, 0.019), (0.028, 0.04, 0.019), m.ink, turn),
-    ])
-    head = articulation(f"rig_{name}_head", at(0, -0.01, 0.19), [
-        blob(f"{name}_head", at(0, -0.02, 0.225), (0.07, 0.062, 0.06), m.ink, turn),
-        blob(f"{name}_muzzle", at(0, -0.07, 0.205), (0.03, 0.02, 0.022), m.ink, turn),
-        cone(f"{name}_ear_l", at(-0.04, -0.015, 0.285), 0.028, 0.0, 0.06, m.ink, rot=(0, -0.3, turn)),
-        cone(f"{name}_ear_r", at(0.04, -0.015, 0.285), 0.028, 0.0, 0.06, m.ink, rot=(0, 0.3, turn)),
-    ])
-    articulation(f"rig_{name}_tail", at(s * 0.04, 0.09, 0.03), [
-        tube(
-            f"{name}_tail",
-            [at(s * x, y, z) for x, y, z in ((0.04, 0.09, 0.03), (0.12, 0.04, 0.02), (0.11, -0.06, 0.016), (0.03, -0.1, 0.016))],
-            0.015,
-            m.ink,
-        ),
-    ])
-    eyes = [
-        blob(f"{name}_eye_l", at(-0.028, -0.078, 0.232), (0.013, 0.005, 0.015), m.neon, turn),
-        blob(f"{name}_eye_r", at(0.028, -0.078, 0.232), (0.013, 0.005, 0.015), m.neon, turn),
+    def paint(obj, color_at):
+        obj.data.materials.clear()
+        obj.data.materials.append(fur)
+        colors = obj.data.color_attributes.new(name="cat_coat", type="FLOAT_COLOR", domain="POINT")
+        for vertex, color in zip(obj.data.vertices, colors.data):
+            color.color = color_at(vertex.co)
+        return obj
+
+    def ellipsoid(part, center, radii, color, pattern=None, detail=12):
+        obj = blob(f"{name}_{part}", at(*center), radii, fur, turn, detail=detail)
+        return paint(obj, lambda p: pattern(*(p[i] / radii[i] for i in range(3))) if pattern else color)
+
+    def tabby(x, y, z):
+        # Broad, slightly wandering bands remain legible at counter scale.
+        band = math.sin(z * 19 + math.sin(y * 6) * 1.4 + abs(x) * 3)
+        return stripe if band > 0.55 else coat
+
+    def body_coat(x, y, z):
+        if y < -0.25 and abs(x) < (0.58 if fluffy else 0.78):
+            return white
+        return tabby(x, y, z)
+
+    def face_coat(x, y, z):
+        if y < -0.2:
+            # Skadi's narrow, forked blaze; Freya's broader white inverted V.
+            blaze = (0.14 + 0.10 * max(z, 0)) if fluffy else (0.30 - 0.13 * z)
+            if z < -0.3 or (abs(x + (0.035 if fluffy else 0)) < blaze and z < 0.86):
+                return white
+            # Dark forehead M and cheek bars, following the face's curvature.
+            if z > 0.3 and math.sin(x * 22 + abs(z - 0.5) * 8) > 0.4:
+                return stripe
+            if abs(x) > 0.55 and -0.25 < z < 0.22 and math.sin(z * 32 + abs(x) * 3) > 0.45:
+                return stripe
+        return coat
+
+    body_parts = [
+        ellipsoid("haunch", (0, 0.033, 0.069), (0.103 if fluffy else 0.09, 0.082, 0.069), coat, body_coat, 16),
+        ellipsoid("body", (0, 0.012, 0.133), (0.081 if fluffy else 0.067, 0.067, 0.105), coat, body_coat, 20),
+        ellipsoid("bib", (0, -0.045, 0.135), (0.062 if fluffy else 0.049, 0.037, 0.087), white),
     ]
-    eyelids = articulation(f"rig_{name}_eyes", at(0, -0.078, 0.232), eyes)
+    for side in (-1, 1):
+        body_parts.extend([
+            ellipsoid(f"leg_{side}", (side * 0.032, -0.041, 0.069), (0.024, 0.027, 0.061), white),
+            ellipsoid(f"paw_{side}", (side * 0.034, -0.059, 0.018), (0.029, 0.037, 0.018), white),
+            ellipsoid(f"hind_paw_{side}", (side * 0.074, 0.014, 0.019), (0.027, 0.04, 0.019), white),
+        ])
+        if fluffy:
+            body_parts.append(ellipsoid(f"sleeve_{side}", (side * 0.039, -0.035, 0.109), (0.029, 0.029, 0.035), coat, tabby))
+    if fluffy:
+        # One continuous mane, with a gently uneven silhouette. Keeping the
+        # tufts in the surface avoids bead-like pieces and extra UV islands.
+        ruff = ellipsoid("ruff", (0, -0.02, 0.173), (0.097, 0.073, 0.072), white, detail=20)
+        for v in ruff.data.vertices:
+            angle = math.atan2(v.co.y / 0.073, v.co.x / 0.097)
+            lower = max(0, -v.co.z / 0.072)
+            ripple = 1 + 0.08 * math.cos(angle * 9) * (1 - lower)
+            v.co.x *= ripple * (1 - 0.22 * lower)
+            v.co.y *= ripple
+            v.co.z -= 0.008 * lower * (0.5 + 0.5 * math.cos(angle * 9))
+        body_parts.append(ruff)
+    body = articulation(f"rig_{name}_body", base, body_parts)
+    body["cat_name"] = identity
+
+    head_parts = [ellipsoid("head", (0, -0.018, 0.241), (0.072 if fluffy else 0.065, 0.058, 0.06), coat, face_coat, 28)]
+    for side in (-1, 1):
+        if fluffy:
+            head_parts.append(ellipsoid(f"cheek_fur_{side}", (side * 0.055, -0.03, 0.218), (0.032, 0.039, 0.027), coat))
+        head_parts.append(ellipsoid(f"muzzle_{side}", (side * 0.015, -0.071, 0.219), (0.025, 0.015, 0.019), white))
+        # Flattened triangular ears, with inset pink faces rather than cones.
+        ear_points = [
+            (side * 0.023, -0.042, 0.275), (side * 0.072, -0.025, 0.271),
+            (side * 0.061, -0.012, 0.337 if fluffy else 0.331),
+            (side * 0.025, 0.006, 0.277), (side * 0.068, 0.012, 0.272),
+        ]
+        me = bpy.data.meshes.new(f"{name}_ear_{side}")
+        me.from_pydata([at(*p) for p in ear_points], [], [(0, 2, 1), (0, 3, 2), (1, 2, 4), (2, 3, 4), (0, 1, 4, 3)])
+        # Mirroring an ear reverses its winding. Reorient the closed shell
+        # before baking so neither ear picks up lighting on its inside face.
+        bm = bmesh.new()
+        bm.from_mesh(me)
+        bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
+        bm.to_mesh(me)
+        bm.free()
+        ear = _link(bpy.data.objects.new(me.name, me))
+        head_parts.append(paint(ear, lambda p: coat))
+        me = bpy.data.meshes.new(f"{name}_inner_ear_{side}")
+        me.from_pydata([at(side * 0.032, -0.0425, 0.279), at(side * 0.063, -0.031, 0.279), at(side * 0.059, -0.017, 0.321)], [], [(0, 1, 2) if side == 1 else (2, 1, 0)])
+        inner = _link(bpy.data.objects.new(me.name, me))
+        head_parts.append(paint(inner, lambda p: pink))
+    head_parts.extend([
+        ellipsoid("chin", (0, -0.066, 0.202), (0.024, 0.016, 0.013), white),
+        # Freya's long gray nose patch interrupts the white blaze; Skadi's
+        # brown bridge is shorter and wider, as in the supplied portraits.
+        ellipsoid("nose_bridge", (0.003 if not fluffy else 0, -0.075, 0.239), (0.011 if not fluffy else 0.014, 0.006, 0.022 if not fluffy else 0.016), coat),
+        ellipsoid("nose", (0, -0.085, 0.222), (0.009, 0.005, 0.006), pink, detail=8),
+        ellipsoid("mouth", (0, -0.084, 0.211), (0.0015, 0.0015, 0.006), dark, detail=6),
+    ])
+    head = articulation(f"rig_{name}_head", at(0, -0.01, 0.195), head_parts)
+    s = tail_side
+    tail = tube(f"{name}_tail", [at(s * x, y, z) for x, y, z in (
+        (0.048, 0.082, 0.05), (0.123, 0.065, 0.042), (0.14, -0.033, 0.029), (0.098, -0.091, 0.025), (0.028, -0.105, 0.025)
+    )], 0.027 if fluffy else 0.013, fur)
+    def tail_coat(p):
+        local = spin.transposed() @ (p - Vector(base))
+        return stripe if math.sin((local.x * s - local.y) * 100) > 0.25 else coat
+    tail["organic"] = True
+    paint(tail, tail_coat)
+    tail_tip = ellipsoid("tail_tip", (s * 0.028, -0.105, 0.025), (0.027 if fluffy else 0.013,) * 3, stripe)
+    articulation(f"rig_{name}_tail", at(s * 0.048, 0.082, 0.05), [tail, tail_tip])
+    eyes = []
+    for side in (-1, 1):
+        x = side * 0.029
+        eyes.extend([
+            ellipsoid(f"eye_rim_{side}", (x, -0.070, 0.249), (0.018, 0.009, 0.014), dark),
+            ellipsoid(f"iris_{side}", (x, -0.077, 0.249), (0.0145, 0.0045, 0.0115), iris),
+            ellipsoid(f"pupil_{side}", (x, -0.081, 0.249), (0.0038, 0.002, 0.010), dark, detail=8),
+            ellipsoid(f"eye_glint_{side}", (x - 0.004, -0.082, 0.254), (0.0025, 0.001, 0.0025), white, detail=6),
+        ])
+    eyelids = articulation(f"rig_{name}_eyes", at(0, -0.078, 0.249), eyes)
     parent([eyelids], head)
     parent([head], body)
 
@@ -718,8 +831,8 @@ def counter_interior(m):
     for i in range(3):
         cyl(f"plate_cookie_{i}", (-0.6 + i * 0.07, -1.3, 1.02 + i * 0.02), 0.06, 0.02, m.cookie, verts=16)
     box("napkins", (-1.4, -1.25, 1.03), (0.12, 0.1, 0.08), m.teal_pale)
-    cat(m, "prop_cat_1", (-1.85, -1.27, 0.99), turn=math.radians(25))
-    cat(m, "prop_cat_2", (-0.13, -1.27, 0.99), turn=math.radians(-20), tail_side=-1)
+    cat("prop_cat_1", (-1.85, -1.27, 0.99), "Skadi", turn=math.radians(25))
+    cat("prop_cat_2", (-0.13, -1.27, 0.99), "Freya", turn=math.radians(-20), tail_side=-1)
 
     # Back wall: menu board, shelves, soft-serve machine
     board = box("menu_board", (-1.5, 0.27, 1.95), (1.5, 0.03, 0.5), m.screen)
@@ -1071,6 +1184,8 @@ def lights_and_cameras(scene):
         ("counter", (-1.0, -6.5, 1.9), (-1.2, 0, 1.3), 50),
         ("sign", (-0.9, -6.5, 3.3), (-0.9, 0, 3.4), 45),
         ("upper", (0.5, -7.5, 5.4), (0.5, 0, 5.3), 40),
+        ("skadi", (-1.60, -2.15, 1.38), (-1.85, -1.28, 1.16), 50),
+        ("freya", (-0.35, -2.15, 1.38), (-0.13, -1.28, 1.16), 50),
     ):
         bpy.ops.object.camera_add(location=loc)
         cam = bpy.context.object
@@ -1280,6 +1395,10 @@ def use_atlas(name, objs, img):
         for uv in list(o.data.uv_layers):
             if uv.name != "bake":
                 o.data.uv_layers.remove(uv)
+        # Authored coat colors are already in the atlas. Do not export them
+        # again as vertex colors (which can also tint the bake in GLB viewers).
+        for color in list(o.data.color_attributes):
+            o.data.color_attributes.remove(color)
 
 
 def bake_all(scene, groups, samples):
