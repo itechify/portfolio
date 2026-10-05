@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Sections } from "./content/Sections";
 import { ShortsSection } from "./content/ShortsSection";
+import type { QualityChoice, QualityTier } from "./scene/quality";
 import { Scene } from "./scene/Scene";
 import { type StationId, stationById } from "./stations";
 import { Loader } from "./ui/Loader";
+import { QualitySelector } from "./ui/QualitySelector";
 import { StationMenu } from "./ui/StationMenu";
 
 function useMediaQuery(query: string) {
@@ -32,6 +34,29 @@ export function App() {
 	const [entered, setEntered] = useState(false);
 	const [station, setStation] = useState<StationId>("street");
 	const [tvHovered, setTvHovered] = useState(false);
+	const [qualityChoice, setQualityChoice] = useState<QualityChoice>(() => {
+		try {
+			const stored = localStorage.getItem("creamery-quality");
+			if (stored === "full" || stored === "balanced" || stored === "light")
+				return stored;
+		} catch {
+			/* Storage is optional. */
+		}
+		return "auto";
+	});
+	const [autoQuality, setAutoQuality] = useState<QualityTier>(() =>
+		window.matchMedia("(pointer: coarse)").matches ? "balanced" : "full",
+	);
+	const quality = qualityChoice === "auto" ? autoQuality : qualityChoice;
+	const chooseQuality = (choice: QualityChoice) => {
+		setQualityChoice(choice);
+		if (choice === "auto") setAutoQuality("full");
+		try {
+			localStorage.setItem("creamery-quality", choice);
+		} catch {
+			/* Storage is optional. */
+		}
+	};
 	const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
 	const [webgl] = useState(hasWebGL);
 	const narrow = useMediaQuery("(max-width: 900px), (max-height: 680px)");
@@ -90,6 +115,12 @@ export function App() {
 				onStation={selectStation}
 				motion={entered && !reducedMotion}
 				tvHovered={tvHovered}
+				quality={quality}
+				onLowerQuality={
+					entered && qualityChoice === "auto" && station === "street"
+						? setAutoQuality
+						: undefined
+				}
 				tv={{
 					surface,
 					hotspot,
@@ -102,6 +133,13 @@ export function App() {
 			{entered && (
 				<>
 					<StationMenu current={station} onSelect={selectStation} />
+					{station === "street" && (
+						<QualitySelector
+							choice={qualityChoice}
+							tier={quality}
+							onChange={chooseQuality}
+						/>
+					)}
 					<button
 						ref={hotspot}
 						className="tv-hotspot"

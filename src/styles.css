@@ -133,6 +133,34 @@ button.entry {
 }
 
 /* Sections: the side panel form (ADR 0002). Projection onto screens comes later. */
+.quality-selector {
+	position: absolute;
+	top: 1rem;
+	left: 1rem;
+	z-index: 5;
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	padding: 0.35rem 0.55rem;
+	border: 1px solid var(--blue-mid);
+	background: rgb(5 6 26 / 0.8);
+	color: var(--paper);
+	font-size: 0.75rem;
+}
+
+.quality-selector select {
+	font: inherit;
+	color: var(--teal);
+	background: var(--night);
+	border: 0;
+	padding: 0.3rem;
+}
+
+.quality-selector select:focus-visible {
+	outline: 2px solid var(--pink);
+	outline-offset: 2px;
+}
+
 .sections {
 	position: absolute;
 	top: 1rem;
