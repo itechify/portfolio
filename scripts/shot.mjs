@@ -198,7 +198,10 @@ if (process.argv.includes("--cats")) {
 			time: 0,
 		};
 	});
-	for (const seconds of [0, 8.6, 25.1, 45.5, 73.5, 77, 102.9, 106]) {
+	// Include push-off, flight and landing as well as each cat's walking pose.
+	for (const seconds of [
+		0, 8.6, 9.2, 29.8, 30.2, 30.4, 30.7, 31.1, 47.6, 79.2, 102.9, 106,
+	]) {
 		const positions = await page.evaluate((seconds) => {
 			const { state, update } = window.catReview;
 			let cats = update(0, true, true);

@@ -54,9 +54,24 @@ test("shipped model preserves articulated pivots, hierarchy and Y-up axes", () =
 			`rig_${prefix}_head`,
 		);
 	}
-	assert.ok(
-		Math.abs(root.getObjectByName("rig_barista_head").position.y - 1.71) < 1e-5,
-	);
+	const head = root.getObjectByName("rig_barista_head");
+	assert.equal(head.parent.name, "rig_barista_body");
+	assert.ok(Math.abs(head.getWorldPosition(new Vector3()).y - 1.71) < 1e-5);
+	for (const id of [1, 2]) {
+		for (const part of [
+			"front_left",
+			"front_right",
+			"hind_left",
+			"hind_right",
+		]) {
+			const prefix = `rig_prop_cat_${id}_${part}`;
+			assert.equal(
+				root.getObjectByName(`${prefix}_paw`).parent.name,
+				`${prefix}_lower`,
+			);
+			assert.equal(root.getObjectByName(`${prefix}_lower`).parent.name, prefix);
+		}
+	}
 });
 
 test("the barista keeps small anchored gestures and restores its pose when motion is off", () => {
@@ -174,9 +189,67 @@ test("a long suspended frame resumes gently", () => {
 	}
 });
 
-function advance(update, seconds, street = true, observe = () => {}) {
-	for (let frame = 0; frame < Math.ceil(seconds * 60); frame++) {
-		update(1 / 60, true, street);
+for (const id of [1, 2])
+	for (const fps of [30, 60])
+		test(`cat ${id} anchors its supporting paws at ${fps} fps`, () => {
+			const root = characterRig();
+			const update = createCharacterMotion(root);
+			const names = ["front_left", "front_right", "hind_left", "hind_right"];
+			const previous = names.map(() => new Vector3());
+			const point = new Vector3();
+			let checked = 0;
+			let previousHeight = -1;
+			let elapsed = 0;
+			advance(
+				update,
+				180,
+				true,
+				() => {
+					elapsed += 1 / fps;
+					const travel = root.getObjectByName(`rig_prop_cat_${id}_travel`);
+					const walking =
+						root.getObjectByName(`rig_prop_cat_${id}_body`).rotation.x > 0.9;
+					const onSurface = [0, 0.59, 0.99].some(
+						(y) => Math.abs(travel.position.y - y) < 1e-6,
+					);
+					let contacts = 0;
+					names.forEach((name, i) => {
+						root
+							.getObjectByName(`rig_prop_cat_${id}_${name}_paw`)
+							.getWorldPosition(point);
+						const ankle = travel.position.y + (i < 2 ? 0.018 : 0.019);
+						if (
+							walking &&
+							onSurface &&
+							Math.abs(previousHeight - travel.position.y) < 1e-6 &&
+							Math.abs(point.y - ankle) < 0.0001
+						) {
+							contacts++;
+							if (Math.abs(previous[i].y - ankle) < 0.0001) {
+								assert.ok(
+									point.distanceTo(previous[i]) < 0.002,
+									`${name} slid ${point.distanceTo(previous[i])}m at ${elapsed}s: ${previous[i].toArray()} -> ${point.toArray()}`,
+								);
+								checked++;
+							}
+						}
+						previous[i].copy(point);
+					});
+					if (walking && onSurface && previousHeight === travel.position.y)
+						assert.ok(
+							contacts >= 1,
+							`cat ${id} lost all paw contacts at ${elapsed}s`,
+						);
+					previousHeight = travel.position.y;
+				},
+				fps,
+			);
+			assert.ok(checked > 100);
+		});
+
+function advance(update, seconds, street = true, observe = () => {}, fps = 60) {
+	for (let frame = 0; frame < Math.ceil(seconds * fps); frame++) {
+		update(1 / fps, true, street);
 		observe();
 	}
 }

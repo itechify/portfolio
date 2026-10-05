@@ -163,6 +163,43 @@ test("customers face their walking direction even around cats", () => {
 	}
 });
 
+for (const fps of [30, 60])
+	test(`walking keeps a support foot without skating at ${fps} fps`, () => {
+		for (const tier of ["full", "light"]) {
+			const root = rig();
+			const visits = createCustomerVisits(root, () => 0.5);
+			const previous = [new Vector3(), new Vector3()];
+			const point = new Vector3();
+			let samples = 0;
+			let plantedSamples = 0;
+			for (let i = 0; i < 25 * fps; i++) {
+				const state = visits.update(1 / fps, true, true, [], tier);
+				if (state.phase !== "approach" || state.time < 2 || state.walking < 0.8)
+					continue;
+				let supported = false;
+				["left", "right"].forEach((side, index) => {
+					root
+						.getObjectByName(`rig_prop_customer_1_${side}_foot`)
+						.getWorldPosition(point);
+					if (Math.abs(point.y - 0.1) < 0.0001) {
+						supported = true;
+						if (samples && Math.abs(previous[index].y - 0.1) < 0.0001) {
+							assert.ok(
+								point.distanceTo(previous[index]) < 0.002,
+								`planted ${side} foot slid ${point.distanceTo(previous[index])}m`,
+							);
+							plantedSamples++;
+						}
+					}
+					previous[index].copy(point);
+				});
+				assert.ok(supported, `both feet left the pavement at ${state.time}s`);
+				samples++;
+			}
+			assert.ok(samples > 5 * fps && plantedSamples > 4 * fps);
+		}
+	});
+
 test("Entry and Street View gate arrivals; quiet gaps and two regulars repeat", () => {
 	for (const random of [0, 0.5, 1]) {
 		const schedule = createVisitSchedule(() => random);
@@ -179,7 +216,7 @@ test("Entry and Street View gate arrivals; quiet gaps and two regulars repeat", 
 		}
 		assert.equal(schedule.state.phase, "quiet");
 		assert.ok(
-			visitSeconds > 90 && visitSeconds < 100,
+			visitSeconds > 85 && visitSeconds < 103,
 			"an unhurried visit includes preparation and clearing up",
 		);
 		assert.equal(

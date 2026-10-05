@@ -1,4 +1,5 @@
 import { MathUtils, type Object3D, Vector3 } from "three";
+import { createBlink, createFootstep, createLeg, ease } from "./limbMotion.ts";
 
 type Point = readonly [number, number, number];
 
@@ -57,6 +58,8 @@ type Journey = {
 	duration: number;
 	hop: boolean;
 	chasing: boolean;
+	launchSpeed: number;
+	prepare: number;
 };
 
 function cat(root: Object3D, id: number, route: readonly Point[]) {
@@ -65,11 +68,52 @@ function cat(root: Object3D, id: number, route: readonly Point[]) {
 	const body = bind(root, `${prefix}_body`);
 	const head = bind(root, `${prefix}_head`);
 	const tail = bind(root, `${prefix}_tail`);
+	const tailEnd = bind(root, `${prefix}_tail_end`);
+	const haunch = bind(root, `${prefix}_haunch`);
+	const ears = ["left", "right"].map((side) =>
+		bind(root, `${prefix}_ear_${side}`),
+	);
 	const eyes = bind(root, `${prefix}_eyes`);
+	const blink = createBlink(id * 1.3);
 	const legs = ["front_left", "front_right", "hind_left", "hind_right"].map(
 		(part) => bind(root, `${prefix}_${part}`),
 	);
-	const joints = [travel, body, head, tail, eyes, ...legs];
+	const lowers = ["front_left", "front_right", "hind_left", "hind_right"].map(
+		(part) => bind(root, `${prefix}_${part}_lower`),
+	);
+	const paws = ["front_left", "front_right", "hind_left", "hind_right"].map(
+		(part) => bind(root, `${prefix}_${part}_paw`),
+	);
+	const feet = legs.map((leg, i) =>
+		leg && lowers[i] && paws[i]
+			? {
+					leg: createLeg(leg.object, lowers[i].object, paws[i].object),
+					step: createFootstep(),
+				}
+			: null,
+	);
+	const joints = [
+		travel,
+		body,
+		head,
+		tail,
+		tailEnd,
+		haunch,
+		eyes,
+		...ears,
+		...legs,
+		...lowers,
+		...paws,
+	];
+	const footTarget = new Vector3();
+	const pole = new Vector3();
+	const velocity = new Vector3();
+	const nextFootfall = new Vector3();
+	const footfalls = legs.map(() => new Vector3());
+	const launchPaws = legs.map(() => new Vector3());
+	let nextPair = 0;
+	let wasAirborne = false;
+	const previousPosition = travel?.position.clone() ?? new Vector3();
 	let node = 0;
 	let direction = 1;
 	let rest = id === 1 ? 7 : 46;
@@ -81,12 +125,18 @@ function cat(root: Object3D, id: number, route: readonly Point[]) {
 	let wasStreet = true;
 	let shadowHeight = route[0][1];
 	let shadowOpacity = 1;
+	let compression = 0;
+	let airborne = false;
+	let landing = 0;
 
 	function depart(toNode: number, chasing = false) {
 		if (!travel) return;
 		const from = travel.object.position.clone();
 		const to = new Vector3(...route[toNode]);
 		const hop = Math.abs(from.y - to.y) > 0.1;
+		const launchSpeed = Math.sqrt(
+			2 * 9.8 * (Math.max(0, to.y - from.y) + 0.14),
+		);
 		journey = {
 			from,
 			to,
@@ -97,10 +147,14 @@ function cat(root: Object3D, id: number, route: readonly Point[]) {
 			posture,
 			elapsed: 0,
 			duration: hop
-				? 0.95
-				: Math.max(0.65, from.distanceTo(to) / (chasing ? 0.85 : 0.22)),
+				? (launchSpeed +
+						Math.sqrt(launchSpeed ** 2 - 2 * 9.8 * (to.y - from.y))) /
+					9.8
+				: Math.max(0.65, from.distanceTo(to) / (chasing ? 0.5 : 0.22)),
 			hop,
 			chasing,
+			launchSpeed,
+			prepare: chasing ? 0.7 : 1.4,
 		};
 	}
 
@@ -112,14 +166,25 @@ function cat(root: Object3D, id: number, route: readonly Point[]) {
 				Math.PI * MathUtils.clamp((((idleTime + id * 7) % 47) - 30) / 4, 0, 1),
 			) **
 				2;
-		gait += delta * (journey?.chasing ? 18 : 10) * moving;
+		velocity.subVectors(
+			travel?.object.position ?? previousPosition,
+			previousPosition,
+		);
+		previousPosition.copy(travel?.object.position ?? previousPosition);
+		gait += Math.hypot(velocity.x, velocity.z) * 45;
+		if (delta > 0) velocity.divideScalar(delta);
+		velocity.y = 0;
 		body.object.rotation.x = body.rotation.x + 0.95 * posture + 0.13 * stretch;
 		body.object.position.y =
 			body.position.y +
 			0.006 * Math.sin(gait * 2) * moving -
-			0.018 * hop -
+			0.022 * compression -
 			0.008 * stretch;
 		body.object.scale.y = 1 + 0.008 * Math.sin(idleTime * 1.7 + id * 2.1);
+		if (haunch) {
+			haunch.object.rotation.x = 0.18 * posture - 0.08 * compression;
+			haunch.object.position.y = haunch.position.y - 0.012 * compression;
+		}
 		const glance =
 			Math.sin(
 				Math.PI * MathUtils.clamp((((idleTime + id * 3) % 19) - 5) / 5, 0, 1),
@@ -127,7 +192,16 @@ function cat(root: Object3D, id: number, route: readonly Point[]) {
 		head.object.rotation.x = head.rotation.x - 0.95 * posture;
 		head.object.rotation.y = MathUtils.damp(
 			head.object.rotation.y,
-			head.rotation.y + (watch ? -0.45 : (id === 1 ? 0.2 : -0.17) * glance),
+			head.rotation.y +
+				(journey && travel
+					? MathUtils.clamp(
+							angle(0, journey.heading - travel.object.rotation.y, 1),
+							-0.5,
+							0.5,
+						)
+					: watch
+						? -0.45
+						: (id === 1 ? 0.2 : -0.17) * glance),
 			5,
 			delta,
 		);
@@ -137,26 +211,124 @@ function cat(root: Object3D, id: number, route: readonly Point[]) {
 		tail.object.rotation.x =
 			tail.rotation.x + 0.55 * smooth((posture - 0.55) / 0.45);
 		tail.object.rotation.y =
-			tail.rotation.y +
-			(id === 1 ? 2.8 : -2.8) * posture +
-			Math.sin(idleTime * 1.3) * 0.13;
-		const blink =
-			Math.sin(
-				Math.PI * MathUtils.clamp((((idleTime + id) % 6.7) - 0.4) / 0.22, 0, 1),
-			) ** 2;
-		eyes.object.scale.y = 1 - 0.94 * blink;
+			tail.rotation.y + (id === 1 ? 2.8 : -2.8) * posture + 0.06 * glance;
+		if (tailEnd)
+			tailEnd.object.rotation.y =
+				0.12 * glance + 0.045 * Math.sin(gait - 0.6) * moving;
+		ears.forEach((ear, i) => {
+			if (ear)
+				ear.object.rotation.y = (watch ? -0.16 : 0.1 * glance) * (i ? 0.7 : 1);
+		});
+		eyes.object.scale.y = blink(delta);
 		legs.forEach((leg, i) => {
 			if (!leg) return;
-			const stride = Math.sin(gait + (i === 0 || i === 3 ? 0 : Math.PI));
-			leg.object.rotation.x =
-				leg.rotation.x + 0.32 * stride * moving - 0.45 * hop;
 			leg.object.position.z =
 				leg.position.z +
 				(i < 2 ? 0.095 : -0.015) * posture +
 				(i < 2 ? 0.025 * stretch : 0);
 			leg.object.position.y =
-				leg.position.y + Math.max(0, stride) * 0.022 * moving;
+				leg.position.y - 0.024 * posture - 0.016 * compression;
 		});
+		if (!travel) return;
+		travel.object.updateWorldMatrix(true, true);
+		nextFootfall.set(0, 0, 0);
+		if (journey && !journey.hop) {
+			const j = journey;
+			const ahead = j.chasing ? 0.17 : 0.28;
+			nextFootfall.lerpVectors(
+				j.from,
+				j.to,
+				smooth((j.elapsed + ahead - j.prepare) / j.duration),
+			);
+			nextFootfall.sub(travel.object.position).y = 0;
+		}
+		feet.forEach((foot, i) => {
+			const leg = legs[i];
+			if (!foot || !leg) return;
+			footfalls[i].set(
+				leg.object.position.x,
+				i < 2 ? 0.018 : 0.019,
+				leg.object.position.z,
+			);
+			travel.object.localToWorld(footfalls[i]).add(nextFootfall);
+		});
+		let steppingPair = -1;
+		if (!airborne && !feet.some((foot) => foot?.step.swinging)) {
+			for (const pair of [nextPair, 1 - nextPair]) {
+				if (
+					feet.some(
+						(foot, i) =>
+							foot &&
+							(i === 0 || i === 3 ? 0 : 1) === pair &&
+							(foot.step.target.distanceTo(footfalls[i]) >
+								(moving > 0 ? 0.055 : 0.015) ||
+								foot.step.rotation.angleTo(travel.object.quaternion) > 0.3),
+					)
+				) {
+					steppingPair = pair;
+					nextPair = 1 - pair;
+					break;
+				}
+			}
+		}
+		feet.forEach((foot, i) => {
+			const leg = legs[i];
+			if (!foot || !leg) return;
+			footTarget.set(
+				leg.object.position.x,
+				i < 2 ? 0.018 : 0.019,
+				leg.object.position.z,
+			);
+			travel.object.localToWorld(footTarget);
+			if (airborne) {
+				// Hind legs finish the push; front paws extend first for landing.
+				if (!wasAirborne) {
+					launchPaws[i].copy(foot.step.target);
+					travel.object.worldToLocal(launchPaws[i]);
+				}
+				footTarget.y += hop * (i < 2 ? 0.02 : 0.037);
+				travel.object.worldToLocal(footTarget);
+				footTarget.lerpVectors(
+					launchPaws[i],
+					footTarget,
+					ease(
+						((journey?.elapsed ?? 0) - (journey?.prepare ?? 0)) /
+							(i < 2 ? 0.1 : 0.14),
+					),
+				);
+				travel.object.localToWorld(footTarget);
+				if (i < 2 && journey) {
+					const progress =
+						(journey.elapsed - journey.prepare) / journey.duration;
+					if (progress > 0.65)
+						footTarget.y = Math.max(
+							journey.to.y + 0.018,
+							footTarget.y - 0.012 * smooth((progress - 0.65) / 0.3),
+						);
+				}
+				foot.step.reset();
+			} else {
+				footTarget.copy(footfalls[i]);
+				footTarget.y = travel.object.position.y + (i < 2 ? 0.018 : 0.019);
+				foot.step.update(
+					delta,
+					footTarget,
+					travel.object.quaternion,
+					steppingPair === (i === 0 || i === 3 ? 0 : 1),
+					-1,
+					journey?.chasing ? 0.1 : 0.17,
+					0.022,
+				);
+				footTarget.copy(foot.step.target);
+			}
+			pole.set(0, 0, i < 2 ? -1 : 1).applyQuaternion(travel.object.quaternion);
+			foot.leg.solve(
+				footTarget,
+				airborne ? travel.object.quaternion : foot.step.rotation,
+				pole,
+			);
+		});
+		wasAirborne = airborne;
 	}
 
 	return {
@@ -190,6 +362,13 @@ function cat(root: Object3D, id: number, route: readonly Point[]) {
 			rest = id === 1 ? 7 : 46;
 			journey = null;
 			posture = gait = idleTime = visits = 0;
+			compression = landing = 0;
+			nextPair = 0;
+			wasAirborne = false;
+			airborne = false;
+			previousPosition.copy(travel?.position ?? previousPosition);
+			for (const foot of feet) foot?.step.reset();
+			blink(0, false);
 			shadowHeight = route[0][1];
 			shadowOpacity = 1;
 			wasStreet = true;
@@ -243,28 +422,48 @@ function cat(root: Object3D, id: number, route: readonly Point[]) {
 			}
 			let moving = 0;
 			let hop = 0;
+			compression = 0;
+			airborne = false;
 			if (journey) {
 				const j = journey;
 				j.elapsed += delta;
-				const prepare = j.chasing ? 0.22 : 0.8;
-				const finish = 0.6;
+				const prepare = j.prepare;
+				const finish = j.hop ? 0.85 : 0.6;
 				const progress = MathUtils.clamp(
 					(j.elapsed - prepare) / j.duration,
 					0,
 					1,
 				);
 				posture =
-					MathUtils.lerp(j.posture, 1, smooth(j.elapsed / prepare)) *
+					MathUtils.lerp(
+						j.posture,
+						1,
+						smooth((j.elapsed - prepare * 0.4) / (prepare * 0.6)),
+					) *
 					(1 - smooth((j.elapsed - prepare - j.duration) / finish));
 				travel.object.rotation.y = angle(
 					j.yaw,
 					j.heading,
-					smooth(j.elapsed / prepare),
+					smooth((j.elapsed - 0.12) / (prepare * 0.55)),
 				);
 				// Smooth acceleration and braking, with exact support-plane landings.
-				travel.object.position.lerpVectors(j.from, j.to, smooth(progress));
+				travel.object.position.lerpVectors(
+					j.from,
+					j.to,
+					j.hop ? progress : smooth(progress),
+				);
 				hop = j.hop ? Math.sin(Math.PI * progress) : 0;
-				travel.object.position.y += hop * 0.23;
+				if (j.hop) {
+					const flightTime = progress * j.duration;
+					travel.object.position.y =
+						j.from.y + j.launchSpeed * flightTime - 4.9 * flightTime ** 2;
+					airborne = progress > 0 && progress < 1;
+					landing = Math.max(0, j.elapsed - prepare - j.duration);
+					compression =
+						j.elapsed < prepare
+							? Math.sin(Math.PI * ease(j.elapsed / prepare)) ** 2
+							: Math.sin(Math.PI * Math.min(1, landing / 0.38)) ** 2;
+				}
 				moving = j.hop ? 0 : Math.sin(Math.PI * progress);
 				shadowHeight = progress < 0.5 ? j.from.y : j.to.y;
 				shadowOpacity = 1 - hop;
@@ -276,7 +475,8 @@ function cat(root: Object3D, id: number, route: readonly Point[]) {
 					journey = null;
 					posture = 0;
 					visits++;
-					rest = id === 1 ? 10 + (visits % 3) * 4 : 42 + (visits % 3) * 11;
+					const variation = (visits * 0.61803398875 + id * 0.31) % 1;
+					rest = id === 1 ? 9 + variation * 10 : 39 + variation * 30;
 				}
 			}
 			pose(delta, moving, hop, watch);

@@ -689,25 +689,38 @@ def cat(name, base, identity, turn=0.0, tail_side=1):
                 return stripe
         return coat
 
-    body_parts = [
+    haunch = articulation(f"rig_{name}_haunch", at(0, 0.033, 0.069), [
         ellipsoid("haunch", (0, 0.033, 0.069), (0.103 if fluffy else 0.09, 0.082, 0.069), coat, body_coat, 16),
+    ])
+    body_parts = [
         ellipsoid("body", (0, 0.012, 0.133), (0.081 if fluffy else 0.067, 0.067, 0.105), coat, body_coat, 20),
         ellipsoid("bib", (0, -0.045, 0.135), (0.062 if fluffy else 0.049, 0.037, 0.087), white),
     ]
     legs = []
     for side in (-1, 1):
-        front_parts = [
-            ellipsoid(f"leg_{side}", (side * 0.032, -0.041, 0.069), (0.024, 0.027, 0.061), white),
-            ellipsoid(f"paw_{side}", (side * 0.034, -0.059, 0.018), (0.029, 0.037, 0.018), white),
-        ]
+        front_parts = [ellipsoid(f"leg_{side}", (side * 0.032, -0.041, 0.091), (0.024, 0.027, 0.038), white)]
         if fluffy:
             front_parts.append(ellipsoid(f"sleeve_{side}", (side * 0.039, -0.035, 0.109), (0.029, 0.029, 0.035), coat, tabby))
         suffix = "left" if side == -1 else "right"
-        legs.append(articulation(f"rig_{name}_front_{suffix}", at(side * 0.032, -0.041, 0.12), front_parts))
-        legs.append(articulation(f"rig_{name}_hind_{suffix}", at(side * 0.065, 0.038, 0.105), [
-            ellipsoid(f"hind_leg_{side}", (side * 0.065, 0.038, 0.062), (0.027, 0.032, 0.044), coat, tabby),
-            ellipsoid(f"hind_paw_{side}", (side * 0.065, 0.014, 0.019), (0.027, 0.04, 0.019), white),
-        ]))
+        for kind, px, py, hip, knee, ankle, upper_parts in (
+            ("front", side * 0.032, -0.041, 0.12, 0.066, 0.018, front_parts),
+            ("hind", side * 0.065, 0.038, 0.105, 0.061, 0.019, [
+                ellipsoid(f"hind_leg_{side}", (side * 0.065, 0.038, 0.082), (0.027, 0.032, 0.030), coat, tabby),
+            ]),
+        ):
+            prefix = f"rig_{name}_{kind}_{suffix}"
+            upper = articulation(prefix, at(px, py, hip), upper_parts)
+            lower = articulation(f"{prefix}_lower", at(px, py, knee), [
+                ellipsoid(f"{kind}_shin_{side}", (px, py, (knee + ankle) / 2),
+                          (0.021, 0.024, (knee - ankle) / 2 + 0.009), white),
+            ])
+            paw = articulation(f"{prefix}_paw", at(px, py, ankle), [
+                ellipsoid(f"{kind}_paw_{side}", (px, py - 0.019, ankle),
+                          (0.029 if kind == "front" else 0.027, 0.037, ankle), white),
+            ])
+            parent([paw], lower)
+            parent([lower], upper)
+            legs.append(upper)
     if fluffy:
         # One continuous mane, with a gently uneven silhouette. Keeping the
         # tufts in the surface avoids bead-like pieces and extra UV islands.
@@ -724,6 +737,7 @@ def cat(name, base, identity, turn=0.0, tail_side=1):
     body["cat_name"] = identity
 
     head_parts = [ellipsoid("head", (0, -0.018, 0.241), (0.072 if fluffy else 0.065, 0.058, 0.06), coat, face_coat, 28)]
+    ears = []
     for side in (-1, 1):
         if fluffy:
             head_parts.append(ellipsoid(f"cheek_fur_{side}", (side * 0.055, -0.03, 0.218), (0.032, 0.039, 0.027), coat))
@@ -744,11 +758,12 @@ def cat(name, base, identity, turn=0.0, tail_side=1):
         bm.to_mesh(me)
         bm.free()
         ear = _link(bpy.data.objects.new(me.name, me))
-        head_parts.append(paint(ear, lambda p: coat))
+        ear_shell = paint(ear, lambda p: coat)
         me = bpy.data.meshes.new(f"{name}_inner_ear_{side}")
         me.from_pydata([at(side * 0.032, -0.0425, 0.279), at(side * 0.063, -0.031, 0.279), at(side * 0.059, -0.017, 0.321)], [], [(0, 1, 2) if side == 1 else (2, 1, 0)])
         inner = _link(bpy.data.objects.new(me.name, me))
-        head_parts.append(paint(inner, lambda p: pink))
+        ears.append(articulation(f"rig_{name}_ear_{'left' if side == -1 else 'right'}",
+                                at(side * 0.045, -0.025, 0.275), [ear_shell, paint(inner, lambda p: pink)]))
     head_parts.extend([
         ellipsoid("chin", (0, -0.066, 0.202), (0.024, 0.016, 0.013), white),
         # Freya's long gray nose patch interrupts the white blaze; Skadi's
@@ -759,16 +774,21 @@ def cat(name, base, identity, turn=0.0, tail_side=1):
     ])
     head = articulation(f"rig_{name}_head", at(0, -0.01, 0.195), head_parts)
     s = tail_side
-    tail = tube(f"{name}_tail", [at(s * x, y, z) for x, y, z in (
-        (0.048, 0.082, 0.05), (0.123, 0.065, 0.042), (0.14, -0.033, 0.029), (0.098, -0.091, 0.025), (0.028, -0.105, 0.025)
-    )], 0.027 if fluffy else 0.013, fur)
+    tail_points = [(0.048, 0.082, 0.05), (0.123, 0.065, 0.042), (0.14, -0.033, 0.029), (0.098, -0.091, 0.025), (0.028, -0.105, 0.025)]
+    tail = tube(f"{name}_tail", [at(s * x, y, z) for x, y, z in tail_points[:3]], 0.027 if fluffy else 0.013, fur)
+    distal = tube(f"{name}_tail_end", [at(s * x, y, z) for x, y, z in tail_points[2:]], 0.027 if fluffy else 0.013, fur)
     def tail_coat(p):
         local = spin.transposed() @ (p - Vector(base))
         return stripe if math.sin((local.x * s - local.y) * 100) > 0.25 else coat
     tail["organic"] = True
     paint(tail, tail_coat)
+    distal["organic"] = True
+    paint(distal, tail_coat)
     tail_tip = ellipsoid("tail_tip", (s * 0.028, -0.105, 0.025), (0.027 if fluffy else 0.013,) * 3, stripe)
-    tail_pivot = articulation(f"rig_{name}_tail", at(s * 0.048, 0.082, 0.05), [tail, tail_tip])
+    tail_end = articulation(f"rig_{name}_tail_end", at(s * 0.14, -0.033, 0.029), [distal, tail_tip,
+        ellipsoid("tail_joint", (s * 0.14, -0.033, 0.029), (0.027 if fluffy else 0.013,) * 3, coat),
+    ])
+    tail_pivot = articulation(f"rig_{name}_tail", at(s * 0.048, 0.082, 0.05), [tail, tail_end])
     eyes = []
     for side in (-1, 1):
         x = side * 0.029
@@ -779,9 +799,9 @@ def cat(name, base, identity, turn=0.0, tail_side=1):
             ellipsoid(f"eye_glint_{side}", (x - 0.004, -0.082, 0.254), (0.0025, 0.001, 0.0025), white, detail=6),
         ])
     eyelids = articulation(f"rig_{name}_eyes", at(0, -0.078, 0.249), eyes)
-    parent([eyelids], head)
+    parent([eyelids, *ears], head)
     parent([head], body)
-    travel = articulation(f"rig_{name}_travel", base, [body, tail_pivot, *legs])
+    travel = articulation(f"rig_{name}_travel", base, [body, haunch, tail_pivot, *legs])
     travel.rotation_euler.z = turn
 
 
@@ -818,7 +838,7 @@ def barista(m):
     for x in (-1.045, -0.755):
         body.append(box("barista_apron_strap", (x, -0.775, 1.4), (0.035, 0.012, 0.36), m.pink))
         body.append(cyl("barista_fastener", (x, -0.79, 1.51), 0.016, 0.012, m.steel, axis="Y"))
-    articulation("rig_barista_body", (-0.9, -0.55, 0.97), body)
+    torso = articulation("rig_barista_body", (-0.9, -0.55, 0.97), body)
 
     head_parts = [
         box("barista_head_shell", (-0.9, -0.55, 1.88), (0.4, 0.34, 0.32), m.purple),
@@ -848,11 +868,12 @@ def barista(m):
     for side, suffix in ((-1, "tray"), (1, "cup")):
         robot_arm(m, f"barista_{suffix}", (-0.9 + side * 0.28, -0.55, 1.5),
                   0.43, 0.43, m.teal_pale)
-    articulation("rig_barista_travel", (-0.9, -0.55, 0), [
+    parent([
         bpy.data.objects[name] for name in (
-            "rig_barista_body", "rig_barista_head",
+            "rig_barista_head",
             "rig_barista_cup_upper", "rig_barista_tray_upper")
-    ])
+    ], torso)
+    articulation("rig_barista_travel", (-0.9, -0.55, 0), [torso])
     serving_props(m)
 
 
