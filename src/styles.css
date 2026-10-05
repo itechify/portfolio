@@ -133,6 +133,85 @@ button.entry {
 }
 
 /* Sections: the side panel form (ADR 0002). Projection onto screens comes later. */
+.quality-selector {
+	position: absolute;
+	top: 1rem;
+	left: 1rem;
+	z-index: 5;
+}
+
+.quality-cog {
+	display: grid;
+	place-items: center;
+	width: 44px;
+	height: 44px;
+	border: 1px solid var(--blue-mid);
+	background: rgb(5 6 26 / 0.8);
+	color: var(--teal);
+	cursor: pointer;
+}
+
+.quality-cog:hover,
+.quality-cog[aria-expanded="true"] {
+	color: var(--pink);
+	border-color: var(--pink);
+}
+
+.quality-cog:focus-visible {
+	outline: 2px solid var(--pink);
+	outline-offset: 2px;
+}
+
+.quality-options {
+	position: fixed;
+	inset: 4.25rem auto auto 1rem;
+	margin: 0;
+	width: 12rem;
+	max-width: calc(100vw - 2rem);
+	padding: 0.75rem;
+	border: 1px solid var(--blue-mid);
+	background: rgb(5 6 26 / 0.96);
+	color: var(--paper);
+	box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+	font-size: 0.85rem;
+}
+
+.quality-options fieldset {
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+
+.quality-options legend {
+	margin-bottom: 0.5rem;
+	color: var(--teal);
+}
+
+.quality-options label {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	min-height: 44px;
+	padding: 0 0.5rem;
+	cursor: pointer;
+}
+
+.quality-options label:hover,
+.quality-options label:focus-within {
+	background: rgb(64 160 224 / 0.16);
+}
+
+.quality-options input {
+	accent-color: var(--pink);
+}
+
+.quality-current {
+	margin-left: auto;
+	color: var(--blue-mid);
+	font-size: 0.75rem;
+	text-transform: capitalize;
+}
+
 .sections {
 	position: absolute;
 	top: 1rem;

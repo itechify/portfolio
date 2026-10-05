@@ -1,5 +1,5 @@
 import { CameraControls, MeshReflectorMaterial } from "@react-three/drei";
-import { Canvas, useThree } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Bloom, EffectComposer, SMAA } from "@react-three/postprocessing";
 import {
 	type ComponentRef,
@@ -12,6 +12,8 @@ import {
 import { BackSide, Box3, Color, MathUtils, Vector3 } from "three";
 import { type Station, type StationId, stationByHotspot } from "../stations";
 import { Creamery } from "./Creamery";
+import { createQualityMonitor, QUALITY, type QualityTier } from "./quality";
+import { Traffic } from "./Traffic";
 import { TvProjection } from "./TvProjection";
 
 interface Props {
@@ -20,6 +22,8 @@ interface Props {
 	motion: boolean;
 	tvHovered: boolean;
 	tv: Parameters<typeof TvProjection>[0];
+	quality: QualityTier;
+	onLowerQuality?: (tier: QualityTier) => void;
 }
 
 /** Street View framing, in three.js coordinates (the GLB is exported Y-up). */
@@ -135,7 +139,7 @@ function Sky() {
 /** The road, a curb's height below the baked sidewalk (CURB in build.py). */
 const ROAD_HEIGHT = -0.12;
 
-function Street() {
+function ReflectiveStreet({ resolution }: { resolution: number }) {
 	const material = useRef<ComponentRef<typeof MeshReflectorMaterial>>(null);
 
 	// drei folds the reflection into the diffuse colour, which only scene
@@ -162,7 +166,7 @@ function Street() {
 			<MeshReflectorMaterial
 				ref={material}
 				blur={[300, 100]}
-				resolution={512}
+				resolution={resolution}
 				mixBlur={1}
 				mixStrength={30}
 				roughness={1}
@@ -177,10 +181,35 @@ function Street() {
 	);
 }
 
-export function Scene({ station, onStation, motion, tv, tvHovered }: Props) {
+function QualityMonitor({
+	tier,
+	onLower,
+}: {
+	tier: QualityTier;
+	onLower?: (tier: QualityTier) => void;
+}) {
+	const sample = useMemo(createQualityMonitor, []);
+	useFrame((_, delta) => {
+		if (!onLower || document.hidden) return;
+		const next = sample(delta, tier);
+		if (next !== tier) onLower(next);
+	});
+	return null;
+}
+
+export function Scene({
+	station,
+	onStation,
+	motion,
+	tv,
+	tvHovered,
+	quality,
+	onLowerQuality,
+}: Props) {
+	const tier = QUALITY[quality];
 	return (
 		<Canvas
-			dpr={[1, 2]}
+			dpr={Math.min(window.devicePixelRatio, tier.dpr)}
 			camera={{
 				position: STREET_POSITION.toArray(),
 				fov: 40,
@@ -209,19 +238,42 @@ export function Scene({ station, onStation, motion, tv, tvHovered }: Props) {
 						if (s) onStation(s.id);
 					}}
 				/>
-				<Street />
+				{tier.reflection > 0 ? (
+					<ReflectiveStreet
+						key={tier.reflection}
+						resolution={tier.reflection}
+					/>
+				) : (
+					<mesh rotation-x={-Math.PI / 2} position-y={ROAD_HEIGHT}>
+						<planeGeometry args={[160, 160]} />
+						<meshBasicMaterial color="#171629" />
+					</mesh>
+				)}
 			</Suspense>
+			{/* Optional traffic has its own load boundary: it cannot hide the Creamery. */}
+			{motion && (
+				<Suspense fallback={null}>
+					<Traffic motion={motion} street={station.id === "street"} />
+				</Suspense>
+			)}
+			<QualityMonitor
+				key={`${quality}-${!!onLowerQuality}`}
+				tier={quality}
+				onLower={onLowerQuality}
+			/>
 			<Rig station={station} motion={motion} />
 			<TvProjection {...tv} />
 			<EffectComposer multisampling={0}>
 				{/* Baked textures top out at 1.0, so only emissives above it bloom. */}
-				<Bloom
-					luminanceThreshold={1.0}
-					luminanceSmoothing={0.1}
-					mipmapBlur
-					intensity={0.9}
-					radius={0.6}
-				/>
+				{tier.bloom && (
+					<Bloom
+						luminanceThreshold={1.0}
+						luminanceSmoothing={0.1}
+						mipmapBlur
+						intensity={0.9}
+						radius={0.6}
+					/>
+				)}
 				{/* The canvas has no MSAA, so this is the only anti-aliasing. */}
 				<SMAA />
 			</EffectComposer>

@@ -16,6 +16,10 @@ const browser = await chromium.launch({
 	],
 });
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+// Hold the Full Quality Tier for repeatable before/after visual comparisons.
+await page.addInitScript(() =>
+	localStorage.setItem("creamery-quality", "full"),
+);
 const errors = [];
 page.on("pageerror", (e) => errors.push(e.message));
 page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
@@ -26,6 +30,142 @@ await page
 	.click({ timeout: 60_000 });
 await page.waitForTimeout(2500);
 await page.screenshot({ path: `${out}/street.png` });
+
+if (process.argv.includes("--traffic")) {
+	await page.waitForFunction(async () => {
+		const resource = performance
+			.getEntriesByType("resource")
+			.find((r) => r.name.includes("/@react-three_fiber"));
+		if (!resource) return false;
+		const { _roots } = await import(resource.name);
+		return !!_roots
+			.get(document.querySelector("canvas"))
+			?.store.getState()
+			.scene.getObjectByName("traffic");
+	});
+	await page.evaluate(async () => {
+		const resource = performance
+			.getEntriesByType("resource")
+			.find((r) => r.name.includes("/@react-three_fiber"));
+		const { _roots } = await import(resource.name);
+		const state = _roots.get(document.querySelector("canvas")).store.getState();
+		state.setFrameloop("never");
+		const traffic = state.internal.subscribers.find((sub) =>
+			sub.ref.current.toString().includes("car.root.position.x"),
+		);
+		if (!traffic) throw new Error("Traffic frame controller not registered");
+		window.trafficReview = {
+			state,
+			step(seconds, render = true) {
+				for (let i = 0; i < seconds * 60; i++) {
+					traffic.ref.current(state, 1 / 60);
+				}
+				if (render) {
+					// Includes one road-reflection render, not thousands during the wait.
+					for (const sub of state.internal.subscribers) {
+						sub.ref.current(state, 0);
+					}
+				}
+				const car = state.scene.getObjectByName("traffic");
+				return { visible: car.visible, x: car.position.x };
+			},
+		};
+	});
+	const crossing = await page.evaluate(() => {
+		for (let i = 0; i < 70 * 60; i++) {
+			const car = window.trafficReview.step(1 / 60, false);
+			if (car.visible && Math.abs(car.x) < 0.04)
+				return window.trafficReview.step(0);
+		}
+		throw new Error("No car crossed Street View");
+	});
+	console.log("Traffic crossing:", crossing);
+	await page.screenshot({ path: `${out}/traffic-street.png`, timeout: 30_000 });
+	console.log("Captured traffic in Street View");
+	// A close inspection of the same exported car, using the app's renderer.
+	await page.evaluate(() => {
+		const { state } = window.trafficReview;
+		state.setFrameloop("never");
+		const car = state.scene.getObjectByName("traffic");
+		car.position.x = 0;
+		car.visible = true;
+		state.camera.position.set(3.2, 1.8, 6.9);
+		state.camera.lookAt(0, 0.38, 3.85);
+		state.camera.updateMatrixWorld();
+		for (const sub of state.internal.subscribers)
+			if (sub.priority > 0) sub.ref.current(state, 0);
+	});
+	// Save the direct WebGL render while its camera is fixed for inspection.
+	const carImage = await page.evaluate(() => {
+		const { state } = window.trafficReview;
+		for (const sub of state.internal.subscribers)
+			if (sub.priority > 0) sub.ref.current(state, 0);
+		return state.gl.domElement.toDataURL("image/png").split(",")[1];
+	});
+	writeFileSync(`${out}/traffic-detail.png`, Buffer.from(carImage, "base64"));
+	console.log("Captured traffic detail");
+	await page.getByRole("button", { name: "About", exact: true }).click();
+	const hidden = await page.evaluate(() => window.trafficReview.step(2));
+	assert.equal(hidden.visible, false, "traffic stays out of a Section");
+	await page.evaluate(() => window.trafficReview.step(70));
+	await page.getByRole("button", { name: "Street View", exact: true }).click();
+	const quiet = await page.evaluate(() => window.trafficReview.step(10));
+	assert.equal(quiet.visible, false, "returning does not queue missed cars");
+	await page.evaluate(() => window.trafficReview.state.setFrameloop("always"));
+	await page.setViewportSize({ width: 390, height: 844 });
+	await page.waitForTimeout(1500);
+	await page.evaluate(() => {
+		const { state } = window.trafficReview;
+		state.setFrameloop("never");
+		for (let i = 0; i < 70 * 60; i++) {
+			const car = window.trafficReview.step(1 / 60, false);
+			if (car.visible && Math.abs(car.x) < 0.04) {
+				window.trafficReview.step(0);
+				break;
+			}
+		}
+	});
+	await page.screenshot({ path: `${out}/traffic-phone.png` });
+	await page.evaluate(() => window.trafficReview.state.setFrameloop("always"));
+	await page.getByRole("button", { name: "Quality settings" }).click();
+	await expect(
+		page.getByRole("radio", { name: "Full", exact: true }),
+	).toBeFocused();
+	await page.keyboard.press("ArrowDown");
+	await expect(
+		page.getByRole("radio", { name: "Balanced", exact: true }),
+	).toBeChecked();
+	await page.keyboard.press("Escape");
+	await expect(
+		page.getByRole("button", { name: "Quality settings" }),
+	).toBeFocused();
+	await expect(
+		page.getByRole("button", { name: "Quality settings" }),
+	).toHaveAttribute("aria-expanded", "false");
+	await page.getByRole("button", { name: "Quality settings" }).click();
+	for (const tier of ["balanced", "light", "auto"]) {
+		await page.locator(`.quality-options input[value="${tier}"]`).check();
+		await page.waitForTimeout(500);
+		await page.screenshot({ path: `${out}/quality-${tier}.png` });
+	}
+	await page.keyboard.press("Escape");
+	await expect(page.locator(".quality-options")).not.toBeVisible();
+	const reduced = await browser.newPage({ reducedMotion: "reduce" });
+	let carRequested = false;
+	reduced.on("request", (r) => {
+		if (r.url().includes("traffic-car.glb")) carRequested = true;
+	});
+	await reduced.goto(base);
+	await reduced.getByRole("button", { name: "Open the shop" }).click();
+	await reduced.waitForTimeout(1500);
+	assert.equal(carRequested, false, "reduced motion skips the car download");
+	assert.deepEqual(errors, []);
+	await browser.close();
+	console.log(
+		"Traffic: Street View, Station suppression, quiet return, Quality Tiers and reduced motion passed",
+	);
+	process.exit(0);
+}
 
 if (process.argv.includes("--cats")) {
 	// Deterministic pose review through the same public controller as the app.

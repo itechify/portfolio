@@ -332,6 +332,38 @@ def cone(name, center, r1, r2, depth, material, rot=(0, 0, 0)):
     return o
 
 
+def ring(name, center, radius, thickness, material, rot=(0, 0, 0)):
+    """An actual open ring, with enough sides for the baked highlight."""
+    bpy.ops.mesh.primitive_torus_add(
+        major_segments=32, minor_segments=8, location=center, rotation=rot,
+        major_radius=radius, minor_radius=thickness,
+    )
+    o = bpy.context.object
+    o.name = name
+    o.data.materials.append(material)
+    return o
+
+
+def profile_prism(name, profile, y, depth, material):
+    """Extrude an X/Z silhouette along Y: folded cartons and vehicle panels."""
+    n = len(profile)
+    verts = [(x, y + side * depth / 2, z) for side in (-1, 1) for x, z in profile]
+    faces = [tuple(range(n - 1, -1, -1)), tuple(range(n, 2 * n))]
+    faces += [(i, (i + 1) % n, (i + 1) % n + n, i + n) for i in range(n)]
+    mesh = bpy.data.meshes.new(name)
+    mesh.from_pydata(verts, [], faces)
+    mesh.update()
+    o = _link(bpy.data.objects.new(name, mesh))
+    mesh.materials.append(material)
+    # Recalculate winding for arbitrary caller silhouettes.
+    bm = bmesh.new()
+    bm.from_mesh(mesh)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bm.to_mesh(mesh)
+    bm.free()
+    return bevel(o, 0.008, 2, True)
+
+
 _font = None
 
 
@@ -576,7 +608,20 @@ def storefront(m):
     cyl("prop_trash_band", (1.0, -1.95, 0.45), 0.185, 0.04, m.blue_deep)
     cyl("prop_trash_lid", (1.0, -1.95, 0.62), 0.2, 0.04, m.blue_mid)
     cyl("prop_trash_knob", (1.0, -1.95, 0.66), 0.04, 0.04, m.blue_deep)
-    ball("prop_trash_bag", (1.32, -1.9, 0.16), 0.17, m.ink, subdiv=2)
+    for i in range(12):
+        a = math.tau * i / 12
+        cyl(f"prop_trash_rib_{i}", (1 + 0.18 * math.cos(a), -1.95 + 0.18 * math.sin(a), 0.29), 0.009, 0.48, m.blue_mid)
+    ring("prop_trash_rolled_rim", (1, -1.95, 0.61), 0.187, 0.015, m.steel_dull)
+    for x in (0.8, 1.2):
+        tube("prop_trash_handle", [(x, -1.99, 0.49), (x, -2.02, 0.54), (x, -1.88, 0.54), (x, -1.91, 0.49)], 0.012, m.blue_deep)
+    bag = blob("prop_trash_bag", (1.32, -1.9, 0.17), (0.19, 0.15, 0.19), m.ink, detail=10)
+    for v in bag.data.vertices:
+        a = math.atan2(v.co.y, v.co.x)
+        v.co.x *= 1 + 0.07 * math.sin(a * 7 + v.co.z * 19)
+        v.co.y *= 1 + 0.09 * math.sin(a * 5)
+    cone("prop_trash_bag_neck", (1.33, -1.9, 0.36), 0.065, 0.025, 0.085, m.ink)
+    ring("prop_trash_bag_tie", (1.33, -1.9, 0.38), 0.028, 0.007, m.steel_dull)
+    blob("prop_trash_bag_knot", (1.34, -1.9, 0.41), (0.05, 0.035, 0.035), m.ink, detail=6)
 
 
 def cat(name, base, identity, turn=0.0, tail_side=1):
@@ -846,17 +891,28 @@ def counter_interior(m):
     for i, x in enumerate((-2.15, -1.55, -0.95, -0.35)):
         cyl(f"stool_{i}_base", (x, -1.9, 0.02), 0.14, 0.04, m.steel)
         cyl(f"stool_{i}_post", (x, -1.9, 0.27), 0.035, 0.5, m.steel)
-        cyl(f"stool_{i}_ring", (x, -1.9, 0.22), 0.11, 0.02, m.steel)
+        ring(f"stool_{i}_ring", (x, -1.9, 0.22), 0.11, 0.012, m.steel)
+        for side in (-1, 1):
+            box(f"stool_{i}_brace_{side}", (x + side * 0.067, -1.9, 0.22), (0.1, 0.018, 0.018), m.steel)
+        cyl(f"stool_{i}_collar", (x, -1.9, 0.43), 0.05, 0.1, m.purple)
         cyl(f"stool_{i}_seat", (x, -1.9, 0.55), 0.19, 0.08, m.pink)
+        ring(f"stool_{i}_piping", (x, -1.9, 0.575), 0.182, 0.008, m.pink_pale)
         cyl(f"stool_{i}_seat_rim", (x, -1.9, 0.505), 0.19, 0.015, m.purple)
     # Things on the counter: cups, a napkin box, a cookie plate, two cats
     for i, x in enumerate((-2.3, -1.12, -0.98)):
-        cyl(f"cup_{i}", (x, -1.16, 1.03), 0.045, 0.09, m.white)
+        cone(f"cup_{i}", (x, -1.16, 1.04), 0.033, 0.047, 0.1, m.white)
         cyl(f"cup_{i}_lid", (x, -1.16, 1.08), 0.05, 0.015, m.pink)
+        ring(f"cup_{i}_rim", (x, -1.16, 1.09), 0.045, 0.006, m.pink_pale)
+        cyl(f"cup_{i}_straw", (x + 0.012, -1.16, 1.14), 0.004, 0.1, m.teal_pale)
     cyl("plate", (-0.66, -1.25, 1.0), 0.14, 0.015, m.white)
+    ring("plate_rim", (-0.66, -1.25, 1.009), 0.129, 0.009, m.pink_pale)
     for i in range(3):
         cyl(f"plate_cookie_{i}", (-0.71 + i * 0.07, -1.25, 1.02 + i * 0.02), 0.06, 0.02, m.cookie, verts=16)
+        for dx, dy in ((-0.025, 0), (0.014, -0.023), (0.025, 0.025)):
+            blob(f"plate_chip_{i}", (-0.71 + i * 0.07 + dx, -1.25 + dy, 1.032 + i * 0.02), (0.009, 0.007, 0.004), m.choc, detail=4)
     box("napkins", (-1.4, -1.16, 1.03), (0.12, 0.1, 0.08), m.teal_pale)
+    box("napkin_slot", (-1.4, -1.16, 1.073), (0.085, 0.018, 0.008), m.ink)
+    box("napkin_fold", (-1.4, -1.16, 1.09), (0.07, 0.008, 0.055), m.white, rot=(0.18, 0, 0))
     cat("prop_cat_1", (-1.85, -1.27, 0.99), "Skadi", turn=math.radians(25))
     cat("prop_cat_2", (-0.13, -1.27, 0.99), "Freya", turn=math.radians(-20), tail_side=-1)
     mouse(m)
@@ -872,7 +928,8 @@ def counter_interior(m):
     box("shelf_2", (-1.6, 0.17, 1.1), (1.6, 0.26, 0.04), m.blue_mid)
     for i, x in enumerate((-2.25, -2.08, -1.91)):
         box(f"milk_{i}", (x, 0.17, 1.57), (0.12, 0.12, 0.2), m.white)
-        box(f"milk_{i}_cap", (x, 0.17, 1.69), (0.06, 0.06, 0.04), m.pink)
+        profile_prism(f"milk_{i}_gable", [(x - 0.06, 1.67), (x + 0.06, 1.67), (x, 1.73)], 0.17, 0.12, m.white)
+        box(f"milk_{i}_fold", (x, 0.17, 1.737), (0.013, 0.12, 0.023), m.pink)
         box(f"milk_{i}_label", (x, 0.1, 1.55), (0.08, 0.01, 0.08), m.teal)
     for i, x in enumerate((-1.6, -1.35)):
         cyl(f"jar_{i}", (x, 0.17, 1.58), 0.09, 0.22, m.teal_pale, verts=16)
@@ -891,7 +948,14 @@ def counter_interior(m):
         cyl(f"softserve_spout_{i}", (x, -0.33, 1.05), 0.03, 0.14, m.steel)
         box(f"softserve_lever_{i}", (x, -0.4, 1.13), (0.03, 0.14, 0.03), m.pink)
     cone("softserve_cone", (-0.45, -0.3, 1.78), 0.0, 0.12, 0.22, m.cookie)
-    ball("softserve_swirl", (-0.45, -0.3, 1.95), 0.1, m.cream, subdiv=2)
+    swirl = []
+    for i in range(45):
+        t = i / 44
+        a = t * math.tau * 2.6
+        r = 0.082 * (1 - t)
+        swirl.append((-0.45 + r * math.cos(a), -0.3 + r * math.sin(a), 1.90 + t * 0.19))
+    tube("softserve_swirl", swirl, 0.033, m.cream)
+    cone("softserve_tip", (*swirl[-1][:2], 2.11), 0.027, 0, 0.065, m.cream)
     # Round window at the back with a silhouette
     cyl("back_window_ring", (0.0, 0.25, 1.9), 0.3, 0.06, m.blue_mid, axis="Y")
     # The glass stands 5 mm proud of the ring so their faces don't z-fight.
@@ -1016,18 +1080,20 @@ def upper(m):
         blades = []
         for b in range(4):
             a = math.radians(b * 90 + 20)
-            blades.append(
-                box(
-                    f"fan_blade_{i}_{b}",
-                    (x + math.cos(a) * 0.17, -1.46, 4.65 + math.sin(a) * 0.17),
-                    (0.26, 0.02, 0.1),
-                    m.teal,
-                    rot=(0, -a, 0),
-                )
-            )
+            profile = [(0.045, -0.022), (0.23, -0.065), (0.30, 0.025), (0.18, 0.083), (0.07, 0.04)]
+            blades.append(profile_prism(
+                f"fan_blade_{i}_{b}",
+                [(x + u * math.cos(a) - v * math.sin(a), 4.65 + u * math.sin(a) + v * math.cos(a)) for u, v in profile],
+                -1.46, 0.022, m.teal,
+            ))
         join([hub] + blades, f"prop_fan_{i + 1}")
-        for g in range(3):
-            box(f"fan_grille_{i}_{g}", (x, -1.49, 4.45 + g * 0.2), (0.66, 0.01, 0.02), m.ink)
+        for radius in (0.16, 0.25, 0.33):
+            ring(f"fan_guard_{i}", (x, -1.51, 4.65), radius, 0.008, m.steel_dull, rot=(math.pi / 2, 0, 0))
+        for a in (0, math.pi / 3, -math.pi / 3):
+            box(f"fan_guard_spoke_{i}", (x, -1.515, 4.65), (0.65, 0.012, 0.012), m.ink, rot=(0, a, 0))
+        for dx in (-0.33, 0.33):
+            for dz in (-0.33, 0.33):
+                cyl(f"fan_mount_{i}", (x + dx, -1.445, 4.65 + dz), 0.021, 0.025, m.steel_dull, axis="Y", verts=8)
 
 
 def shorts_tv(m):
@@ -1110,6 +1176,10 @@ def rooftop(m):
     # Vent unit with a grille
     box("roof_unit", (-0.5, 0.3, 6.0), (1.0, 0.8, 0.6), m.purple)
     box("roof_unit_top", (-0.5, 0.3, 6.32), (1.06, 0.86, 0.04), m.ink)
+    for x in (-0.87, -0.13):
+        box("roof_unit_rail", (x, 0.3, 5.72), (0.09, 0.93, 0.12), m.steel_dull)
+    box("roof_unit_service_panel", (0.012, 0.3, 6.03), (0.02, 0.54, 0.4), m.blue_dark)
+    tube("roof_unit_conduit", [(0, 0.58, 5.9), (0.16, 0.58, 5.9), (0.2, 0.58, 5.71), (0.7, 0.58, 5.71)], 0.023, m.steel_dull)
     for g in range(4):
         box(f"roof_unit_slat_{g}", (-0.5, -0.11, 5.85 + g * 0.1), (0.8, 0.02, 0.03), m.ink)
     cyl("roof_unit_fan", (-0.5, -0.12, 6.1), 0.14, 0.02, m.teal, axis="Y", verts=16)
@@ -1138,7 +1208,25 @@ def rooftop(m):
     cone("bird_beak", (-1.38, 0.6, 7.17), 0.008, 0.0, 0.025, m.cookie, rot=(0, math.pi / 2, 0))
     # Satellite dish on the right
     cyl("dish_mast", (2.3, 0.6, 5.95), 0.025, 0.5, m.steel)
-    cone("dish", (2.2, 0.35, 6.2), 0.3, 0.05, 0.12, m.steel, rot=(math.radians(-60), 0, 0))
+    # A shallow concave reflector with a rolled edge and feed arm.
+    center = Vector((2.2, 0.35, 6.2))
+    rotation = Matrix.Rotation(math.radians(65), 3, "X")
+    verts = []
+    for radius in (0.0, 0.075, 0.15, 0.225, 0.3):
+        for i in range(32):
+            a = math.tau * i / 32
+            verts.append(center + rotation @ Vector((radius * math.cos(a), radius * math.sin(a), 0.95 * radius ** 2)))
+    faces = [(r * 32 + i, r * 32 + (i + 1) % 32, (r + 1) * 32 + (i + 1) % 32, (r + 1) * 32 + i) for r in range(4) for i in range(32)]
+    mesh = bpy.data.meshes.new("dish")
+    mesh.from_pydata(verts, [], faces)
+    dish = _link(bpy.data.objects.new("dish", mesh))
+    mesh.materials.append(m.steel_dull)
+    solid = dish.modifiers.new("dish_thickness", "SOLIDIFY")
+    solid.thickness = 0.015
+    ring("dish_rim", center + rotation @ Vector((0, 0, 0.086)), 0.3, 0.012, m.steel, rot=rotation.to_euler())
+    points = [center + rotation @ Vector(p) for p in ((0, -0.29, 0.08), (0, -0.21, 0.34), (0, 0, 0.24))]
+    tube("dish_feed_arm", points, 0.018, m.ink)
+    blob("dish_receiver", points[-1], (0.045, 0.055, 0.045), m.teal_pale, detail=6)
     # Monitor: Credits. Content bars are children of the Hotspot.
     tilt = (math.radians(-8), 0, 0)
     box("monitor_leg_l", (0.6, 0.4, 6.0), (0.08, 0.08, 0.6), m.purple)
@@ -1208,6 +1296,22 @@ def kiosk(m):
     k.append(cyl("kiosk_lamp_l", (-4.36, -0.4, 2.08), 0.07, 0.1, m.neon_pink))
     k.append(cyl("kiosk_lamp_r", (-4.04, -0.4, 2.08), 0.07, 0.1, m.neon_pink))
     k.append(box("kiosk_side_stripe", (-4.61, -0.4, 0.75), (0.02, 0.5, 1.2), m.pink))
+    # Projecting bezel and printer mouth, framed by serviceable cabinet parts.
+    for x in (-4.53, -3.87):
+        k.append(box("kiosk_bezel_side", (x, -0.79, 0.96), (0.055, 0.13, 0.57), m.purple))
+    for z in (0.68, 1.24):
+        k.append(box("kiosk_bezel_edge", (-4.2, -0.79, z), (0.69, 0.13, 0.055), m.purple))
+    k.append(box("kiosk_printer_hood", (-4.2, -0.8, 0.55), (0.49, 0.12, 0.035), m.steel_dull))
+    k.append(box("kiosk_printer_tray", (-4.2, -0.83, 0.44), (0.47, 0.17, 0.025), m.purple))
+    k.append(box("kiosk_keypad_mount", (-4.2, -0.758, 0.26), (0.36, 0.03, 0.25), m.steel_dull))
+    k.append(box("kiosk_service_panel", (-3.792, -0.4, 0.7), (0.025, 0.52, 1.08), m.blue_mid))
+    for z in (0.25, 1.12):
+        k.append(box("kiosk_hinge", (-3.77, -0.19, z), (0.04, 0.04, 0.12), m.steel_dull))
+    for z in (0.12, 1.42):
+        for x in (-4.52, -3.88):
+            k.append(cyl("kiosk_fastener", (x, -0.764, z), 0.016, 0.018, m.steel, axis="Y", verts=8))
+    for z in (0.4, 0.47, 0.54):
+        k.append(box("kiosk_side_vent", (-3.773, -0.4, z), (0.012, 0.32, 0.024), m.ink))
     parent(k, body)
 
 
@@ -1230,6 +1334,27 @@ def machine(m):
     k.append(box("machine_slot_lip", (3.3, -1.1, 0.3), (0.52, 0.06, 0.02), m.steel))
     k.append(box("machine_side_stripe", (3.71, -0.6, 0.9), (0.02, 0.6, 1.4), m.teal))
     k.append(box("machine_foot", (3.3, -0.6, 0.03), (0.86, 0.96, 0.06), m.ink))
+    for x in (2.96, 3.64):
+        k.append(box("machine_bezel_side", (x, -1.1, 1.2), (0.055, 0.13, 0.63), m.purple))
+        k.append(box("machine_corner_trim", (x, -1.065, 0.42), (0.055, 0.055, 0.6), m.blue_mid))
+    for z in (0.9, 1.5):
+        k.append(box("machine_bezel_edge", (3.3, -1.1, z), (0.72, 0.13, 0.05), m.purple))
+    k.append(box("machine_control_deck", (3.3, -1.14, 0.72), (0.76, 0.28, 0.07), m.purple))
+    k.append(cyl("machine_joystick_base", (3.07, -1.2, 0.767), 0.055, 0.02, m.ink))
+    k.append(cyl("machine_joystick_stem", (3.07, -1.2, 0.805), 0.014, 0.07, m.steel))
+    k.append(blob("machine_joystick_grip", (3.07, -1.2, 0.845), (0.036, 0.036, 0.036), m.pink, detail=8))
+    for x, color in ((3.35, m.teal), (3.5, m.pink)):
+        k.append(cyl("machine_deck_button_rim", (x, -1.21, 0.76), 0.049, 0.018, m.ink))
+        k.append(cyl("machine_deck_button", (x, -1.21, 0.777), 0.037, 0.022, color))
+    k.append(box("machine_coin_surround", (3.52, -1.06, 0.59), (0.15, 0.035, 0.22), m.steel_dull))
+    k.append(box("machine_coin_cut", (3.52, -1.084, 0.62), (0.018, 0.008, 0.08), m.ink))
+    k.append(box("machine_return", (3.52, -1.09, 0.53), (0.065, 0.03, 0.035), m.pink))
+    k.append(box("machine_side_panel", (3.718, -0.6, 0.92), (0.025, 0.67, 1.12), m.blue_dark))
+    for z in (0.51, 0.58, 0.65, 0.72):
+        k.append(box("machine_side_vent", (3.737, -0.6, z), (0.012, 0.4, 0.025), m.ink))
+    for z in (0.42, 1.4):
+        for y in (-0.87, -0.33):
+            k.append(cyl("machine_panel_bolt", (3.742, y, z), 0.016, 0.016, m.steel, axis="X", verts=8))
     parent(k, body)
 
 
@@ -1456,7 +1581,7 @@ def bake_group(scene, name, objs, size, samples):
     added = []
     portable = []
     for mt in mats:
-        if name == "animals":
+        if name in ("animals", "car_paint", "car_detail"):
             # Interior surfaces hidden by a seated limb must not bake black:
             # walking exposes them. Bake coat colour with gentle broad shading
             # instead of positional lights or occlusion from other joints.
@@ -1497,7 +1622,7 @@ def bake_group(scene, name, objs, size, samples):
     scene.cycles.samples = samples
     scene.render.bake.margin = 8
     scene.render.bake.use_clear = True
-    bpy.ops.object.bake(type="EMIT" if name == "animals" else "COMBINED")
+    bpy.ops.object.bake(type="EMIT" if name in ("animals", "car_paint", "car_detail") else "COMBINED")
     for mt, node in added:
         mt.node_tree.nodes.remove(node)
     for mt, output, original, nodes in portable:
@@ -1591,12 +1716,121 @@ def export():
     )
 
 
-if __name__ == "__main__":
-    scene, cams = build()
+def build_car_asset():
+    """A small city hatchback facing +X. Separate portable atlases avoid
+    baking the Creamery's positional lights into a moving vehicle. Wheel
+    pivots export with local Z axles; only the paint material is tinted.
+    """
+    global GLB_PATH
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    _mats.clear()
+    scene = bpy.context.scene
+    m = M()
+    paint = mat("car_paint", "steel", rough=0.5)
+    glass = mat("car_glass", "ink", rough=0.25)
+    parts = []
+
+    def panel(name, center, size, material, rot=(0, 0, 0)):
+        o = box(name, center, size, material, rot)
+        parts.append(o)
+        return o
+
+    # Side silhouettes cut up around the tires, rather than burying wheels
+    # in a single box. The narrower chassis sits behind these panels.
+    profile = [(-1.38, 0.55), (-1.18, 0.67), (0.83, 0.64), (1.39, 0.5), (1.39, 0.31), (1.12, 0.31)]
+    for cx in (0.84, -0.87):
+        profile += [(cx + 0.29 * math.cos(a), 0.24 + 0.29 * math.sin(a)) for a in [i * math.pi / 12 for i in range(1, 13)]]
+        if cx > 0:
+            profile += [(0.52, 0.3), (-0.55, 0.3), (-0.58, 0.31)]
+    profile += [(-1.38, 0.31)]
+    for side in (-1, 1):
+        parts.append(profile_prism("car_side", profile, side * 0.51, 0.07, paint))
+        panel("car_sill", (-0.03, side * 0.555, 0.31), (0.96, 0.065, 0.055), m.ink)
+        panel("car_sill_light", (-0.03, side * 0.592, 0.34), (0.78, 0.009, 0.018), m.neon_soft)
+        panel("car_door_seam", (-0.35, side * 0.553, 0.52), (0.015, 0.012, 0.24), m.ink)
+        panel("car_door_handle", (-0.22, side * 0.566, 0.61), (0.13, 0.018, 0.026), m.steel_dull)
+        panel("car_mirror_arm", (0.47, side * 0.55, 0.72), (0.05, 0.16, 0.035), m.ink)
+        panel("car_mirror", (0.48, side * 0.66, 0.74), (0.14, 0.075, 0.07), paint)
+        for cx in (-0.87, 0.84):
+            pts = [(cx + 0.294 * math.cos(a), side * 0.558, 0.24 + 0.294 * math.sin(a)) for a in [i * math.pi / 12 for i in range(13)]]
+            parts.append(tube("car_wheel_arch", pts, 0.024, m.ink))
+    panel("car_chassis", (0, 0, 0.34), (2.6, 0.86, 0.16), m.ink)
+    panel("car_belt", (0, 0, 0.60), (2.48, 1.01, 0.09), paint)
+    panel("car_hood", (0.96, 0, 0.62), (0.66, 1.01, 0.055), paint, rot=(0, 0.12, 0))
+    cabin = [(-1.03, 0.645), (-0.68, 0.98), (0.25, 0.98), (0.69, 0.645)]
+    parts.append(profile_prism("car_cabin", cabin, 0, 0.88, glass))
+    panel("car_roof", (-0.21, 0, 0.98), (0.98, 0.92, 0.055), paint)
+    for side in (-1, 1):
+        for a, b in ((cabin[0], cabin[1]), (cabin[2], cabin[3])):
+            parts.append(tube("car_window_pillar", [(a[0], side * 0.45, a[1]), (b[0], side * 0.45, b[1])], 0.026, paint))
+        panel("car_window_divider", (-0.27, side * 0.449, 0.805), (0.043, 0.018, 0.3), m.ink)
+        panel("car_window_trim", (-0.15, side * 0.451, 0.657), (1.53, 0.018, 0.024), m.steel_dull)
+    for x in (-1.37, 1.38):
+        panel("car_bumper", (x, 0, 0.34), (0.11, 1.1, 0.11), m.ink)
+        panel("car_license", (x * 1.05, 0, 0.35), (0.012, 0.23, 0.065), m.teal_pale)
+    panel("car_front_grille", (1.402, 0, 0.45), (0.025, 0.57, 0.08), m.ink)
+    for y in (-0.36, 0.36):
+        panel("car_headlamp_recess", (1.385, y, 0.535), (0.045, 0.28, 0.105), m.ink)
+        panel("car_headlamp", (1.414, y, 0.543), (0.012, 0.22, 0.038), m.bulb)
+        for z in (0.49, 0.55):
+            panel("car_tail_light", (-1.405, y, z), (0.018, 0.25, 0.027), m.neon_pink)
+    for i in range(5):
+        panel("car_rear_louver", (-1.08 - i * 0.048, 0, 0.686 - i * 0.014), (0.021, 0.7, 0.024), m.ink)
+    body = articulation("rig_traffic_body", (0, 0, 0), parts)
+    wheels = []
+    for x in (-0.87, 0.84):
+        for side in (-1, 1):
+            y = side * 0.53
+            pieces = [cyl("car_tire", (x, y, 0.24), 0.24, 0.16, m.ink, axis="Y", verts=32)]
+            pieces.append(cyl("car_rim", (x, side * 0.619, 0.24), 0.16, 0.023, m.steel_dull, axis="Y", verts=24))
+            pieces.append(cyl("car_hub", (x, side * 0.638, 0.24), 0.059, 0.018, m.blue_dark, axis="Y"))
+            for i in range(5):
+                a = math.tau * i / 5
+                pieces.append(box("car_wheel_slot", (x + 0.103 * math.cos(a), side * 0.636, 0.24 + 0.103 * math.sin(a)), (0.068, 0.01, 0.027), m.ink, rot=(0, -a, 0)))
+            wheels.append(articulation(f"rig_traffic_wheel_{len(wheels)}", (x, y, 0.24), pieces))
+    articulation("rig_traffic_car", (0, 0, 0), [body] + wheels)
     finalize()
-    if "--no-render" not in sys.argv:
-        render(scene, cams)
-    groups = regroup()
-    if "--no-bake" not in sys.argv:
-        bake_all(scene, groups, samples=512)
+    # Join by material category and pivot: two small atlases, a handful of
+    # emissive parts, and four rotating wheels instead of per-panel draws.
+    paints, details, glows = [], [], {}
+    for pivot in [body] + wheels:
+        painted, plain = [], []
+        for o in list(pivot.children):
+            mt = o.data.materials[0]
+            if is_emissive(mt):
+                glows.setdefault(mt.name, []).append(o)
+            elif mt == paint:
+                painted.append(o)
+            else:
+                plain.append(o)
+        if painted:
+            paints.append(join(painted, f"{pivot.name}_paint"))
+        if plain:
+            details.append(join(plain, f"{pivot.name}_detail"))
+    for name, objects in glows.items():
+        join(objects, f"car_glow_{name}")
+    prefs = bpy.context.preferences.addons["cycles"].preferences
+    prefs.compute_device_type = "OPTIX"
+    prefs.get_devices()
+    for d in prefs.devices:
+        d.use = d.type == "OPTIX"
+    scene.render.engine = "CYCLES"
+    scene.cycles.device = "GPU"
+    scene.view_settings.view_transform = "Standard"
+    for name, objects, size in (("car_paint", paints, 256), ("car_detail", details, 512)):
+        use_atlas(name, objects, bake_group(scene, name, objects, size, 32))
+    GLB_PATH = os.path.join(ROOT, "public", "models", "traffic-car.glb")
     export()
+
+
+if __name__ == "__main__":
+    if "--car-only" not in sys.argv:
+        scene, cams = build()
+        finalize()
+        if "--no-render" not in sys.argv:
+            render(scene, cams)
+        groups = regroup()
+        if "--no-bake" not in sys.argv:
+            bake_all(scene, groups, samples=512)
+        export()
+    build_car_asset()
