@@ -37,6 +37,72 @@ function advance(schedule, seconds, enabled = true, street = true, cats = []) {
 	return { ...schedule.state };
 }
 
+test("walking arms hang beside the torso rather than folding across the chest", () => {
+	const root = rig();
+	const visits = createCustomerVisits(root, () => 0);
+	const point = new Vector3();
+	for (let i = 0; i < 36 * 60; i++) {
+		const state = visits.update(1 / 60, true, true, []);
+		if (state.walking < 0.9) continue;
+		const travel = root.getObjectByName(
+			`rig_prop_customer_${state.variant + 1}_travel`,
+		);
+		for (const [side, sign] of [
+			["left", -1],
+			["right", 1],
+		]) {
+			const prefix = `rig_prop_customer_${state.variant + 1}_${side}`;
+			root.getObjectByName(`${prefix}_lower`).getWorldPosition(point);
+			travel.worldToLocal(point);
+			assert.ok(
+				sign * point.x >= 0.18 && sign * point.x < 0.3 && point.y < 0.96,
+				`${side} elbow folds into the torso: ${point.toArray().map((v) => v.toFixed(3))}`,
+			);
+			root.getObjectByName(`${prefix}_hand`).getWorldPosition(point);
+			travel.worldToLocal(point);
+			assert.ok(
+				point.y < 0.58,
+				`${side} walking hand is raised to ${point.y.toFixed(3)}m`,
+			);
+		}
+	}
+});
+
+test("customers face their walking direction even around cats", () => {
+	const root = rig();
+	const characters = createCharacterMotion(root);
+	const visits = createCustomerVisits(root, () => 0);
+	const forward = new Vector3();
+	const previous = new Vector3();
+	const displacement = new Vector3();
+	let previousPhase = "quiet";
+	for (let i = 0; i < 180 * 60; i++) {
+		const cats = characters(1 / 60, true, true, visits.needsSidewalk);
+		const state = visits.update(1 / 60, true, true, cats);
+		const travel = root.getObjectByName(
+			`rig_prop_customer_${state.variant + 1}_travel`,
+		);
+		displacement.subVectors(travel.position, previous).setY(0);
+		if (
+			state.phase === previousPhase &&
+			["approach", "leave"].includes(state.phase) &&
+			displacement.length() > 0.001
+		) {
+			forward
+				.set(0, 0, 1)
+				.applyQuaternion(travel.quaternion)
+				.setY(0)
+				.normalize();
+			assert.ok(
+				forward.dot(displacement.normalize()) > 0.94,
+				`${state.phase}: customer is moving sideways at ${travel.position.toArray()}`,
+			);
+		}
+		previous.copy(travel.position);
+		previousPhase = state.phase;
+	}
+});
+
 test("Entry and Street View gate arrivals; quiet gaps and two regulars repeat", () => {
 	for (const random of [0, 0.5, 1]) {
 		const schedule = createVisitSchedule(() => random);
@@ -70,21 +136,19 @@ test("every active phase completes when a Section opens; no queued arrivals", ()
 	}
 });
 
-test("customers yield into the curb lane, and pass a resting cat without deadlock", () => {
+test("customers wait offscreen for cats to clear, including when a Section opens", () => {
 	const schedule = createVisitSchedule(() => 0);
-	advance(schedule, 9);
-	const x = schedule.state.x;
-	const cat = { position: new Vector3(x + 0.6, 0, 2.3), resting: false };
-	advance(schedule, 1, true, true, [cat]);
-	assert.equal(schedule.state.x, x, "wait while the cat crosses");
-	assert.ok(schedule.state.yield > 0.98, "step aside before the cat arrives");
-	cat.resting = true;
-	advance(schedule, 2, true, false, [cat]);
-	assert.ok(
-		schedule.state.x > x,
-		"a cat that settles in a Section is passable",
+	const cat = { position: new Vector3(-2, 0, 2.3), resting: true };
+	assert.equal(advance(schedule, 9, true, true, [cat]).phase, "quiet");
+	assert.ok(schedule.needsSidewalk);
+	cat.position.x = 0.05;
+	assert.equal(advance(schedule, 10, true, false, [cat]).phase, "quiet");
+	assert.equal(
+		schedule.needsSidewalk,
+		false,
+		"do not reserve a path for an arrival while reading",
 	);
-	assert.equal(advance(schedule, 90, true, false, [cat]).phase, "quiet");
+	assert.equal(advance(schedule, 0.1, true, true, [cat]).phase, "approach");
 });
 
 test("suspended frames cannot jump a visit; disabling motion resets arrival timing", () => {
@@ -217,8 +281,14 @@ test("actual cat routes and customer visits coexist for ten minutes, including S
 	let minDistance = Infinity;
 	for (let i = 0; i < 600 * 60; i++) {
 		const street = i % (100 * 60) < 65 * 60;
-		const cats = characters(1 / 60, true, street);
+		const cats = characters(1 / 60, true, street, visits.needsSidewalk);
 		const state = visits.update(1 / 60, true, street, cats, "light");
+		if (state.walking > 0 && ["approach", "leave"].includes(state.phase)) {
+			assert.ok(
+				!cats.some((cat) => cat.blocksSidewalk),
+				"customers and cats take turns on the sidewalk",
+			);
+		}
 		if (state.phase === "quiet") active = 0;
 		else {
 			active += 1 / 60;
@@ -238,7 +308,7 @@ test("actual cat routes and customer visits coexist for ten minutes, including S
 	assert.equal(seen.size, 2);
 	assert.ok(longestVisit < 90, `visit stalled for ${longestVisit}s`);
 	assert.ok(
-		minDistance > 0.23,
+		minDistance > 0.35,
 		`cat/customer centers approached to ${minDistance}m`,
 	);
 });

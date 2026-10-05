@@ -1001,10 +1001,13 @@ def counter_interior(m):
         cyl(f"cup_{i}_straw", (x + 0.012, -1.16, 1.14), 0.004, 0.1, m.teal_pale)
     cyl("plate", (-0.66, -1.25, 1.0), 0.14, 0.015, m.white)
     ring("plate_rim", (-0.66, -1.25, 1.009), 0.129, 0.009, m.pink_pale)
-    for i in range(3):
-        cyl(f"plate_cookie_{i}", (-0.71 + i * 0.07, -1.25, 1.02 + i * 0.02), 0.06, 0.02, m.cookie, verts=16)
-        for dx, dy in ((-0.025, 0), (0.014, -0.023), (0.025, 0.025)):
-            blob(f"plate_chip_{i}", (-0.71 + i * 0.07 + dx, -1.25 + dy, 1.032 + i * 0.02), (0.009, 0.007, 0.004), m.choc, detail=4)
+    # Three cookies rest directly on the plate, with room between them and
+    # the rim. Raising later cookies while offsetting them left unsupported
+    # overhangs that read as floating, interpenetrating disks.
+    for i, (x, y) in enumerate(((-0.715, -1.278), (-0.605, -1.278), (-0.66, -1.193))):
+        cyl(f"plate_cookie_{i}", (x, y, 1.019), 0.045, 0.018, m.cookie, verts=24)
+        for dx, dy in ((-0.018, 0), (0.01, -0.018), (0.017, 0.017)):
+            blob(f"plate_chip_{i}", (x + dx, y + dy, 1.031), (0.007, 0.006, 0.004), m.choc, detail=4)
     box("napkins", (-1.4, -1.16, 1.03), (0.12, 0.1, 0.08), m.teal_pale)
     box("napkin_slot", (-1.4, -1.16, 1.073), (0.085, 0.018, 0.008), m.ink)
     box("napkin_fold", (-1.4, -1.16, 1.09), (0.07, 0.008, 0.055), m.white, rot=(0.18, 0, 0))

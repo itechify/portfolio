@@ -25,7 +25,7 @@ export async function reviewCustomers(page, out) {
 				let cats;
 				for (let i = 0; i < Math.max(1, seconds * 60); i++) {
 					const delta = seconds ? 1 / 60 : 0;
-					cats = characters(delta, enabled, street);
+					cats = characters(delta, enabled, street, visits.needsSidewalk);
 					visits.update(delta, enabled, street, cats, quality);
 					review.time += delta;
 				}
@@ -47,7 +47,11 @@ export async function reviewCustomers(page, out) {
 			render(detail = true) {
 				const customer = visits.shadow.position;
 				if (detail) {
-					state.camera.position.set(customer.x + 2.5, 2.15, 4.3);
+					state.camera.position.set(
+						customer.x + (visits.state.phase === "leave" ? -2.5 : 2.5),
+						2.15,
+						4.3,
+					);
 					state.camera.lookAt(customer.x, 1.0, 1.6);
 				} else {
 					state.camera.position.set(0, 4.2, 14);
@@ -76,6 +80,18 @@ export async function reviewCustomers(page, out) {
 		const review = window.customerReview;
 		for (let i = 0; i < 180 * 60; i++) {
 			const state = review.step(1 / 60);
+			if (state.variant === 1 && state.phase === "approach" && state.x > -4.5) {
+				review.render();
+				return;
+			}
+		}
+		throw new Error("Second regular did not arrive");
+	});
+	await page.screenshot({ path: `${out}/customer-second-arrival.png` });
+	await page.evaluate(() => {
+		const review = window.customerReview;
+		for (let i = 0; i < 180 * 60; i++) {
+			const state = review.step(1 / 60);
 			if (state.variant === 1 && state.phase === "enjoy" && state.time > 1) {
 				review.render();
 				return;
@@ -84,6 +100,15 @@ export async function reviewCustomers(page, out) {
 		throw new Error("Second regular did not receive service");
 	});
 	await page.screenshot({ path: `${out}/customer-second-service.png` });
+	await page.evaluate(() => {
+		const { state } = window.customerReview;
+		state.camera.position.set(-0.3, 2.1, 2.5);
+		state.camera.lookAt(-0.66, 1.03, 1.25);
+		state.camera.updateMatrixWorld();
+		for (const sub of state.internal.subscribers)
+			if (sub.priority > 0) sub.ref.current(state, 0);
+	});
+	await page.screenshot({ path: `${out}/counter-cookies.png` });
 	await page.getByRole("button", { name: "Quality settings" }).click();
 	await page.getByRole("radio", { name: "Light", exact: true }).check();
 	await page.keyboard.press("Escape");

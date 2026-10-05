@@ -8,7 +8,11 @@ import {
 } from "three";
 import type { QualityTier } from "./quality.ts";
 
-type Cat = { position: Vector3 | undefined; readonly resting: boolean };
+type Cat = {
+	position: Vector3 | undefined;
+	readonly resting: boolean;
+	readonly blocksSidewalk?: boolean;
+};
 type Phase =
 	| "quiet"
 	| "approach"
@@ -25,8 +29,8 @@ type Phase =
 const START_X = -7.8;
 const AISLE_X = -1.25;
 const SEAT_X = -0.95;
-const LANE_Z = 2.28;
-const CURB_Z = 2.55;
+// Leave room for relaxed hands beside the stools, with both feet on the sidewalk.
+const LANE_Z = 2.4;
 const SPEED = 1.05;
 const smooth = (value: number) => {
 	const t = MathUtils.clamp(value, 0, 1);
@@ -57,9 +61,9 @@ const sequence: Phase[] = [
 	"quiet",
 ];
 
-/** Only active Street View time schedules arrivals. An ongoing visit completes
- * in any Station. A curb-side pause leaves the cats' original routes clear;
- * a resting cat can be passed sideways, so Section changes cannot deadlock it.
+/** Only active Street View time schedules arrivals. Customers wait offscreen
+ * or at their stool while cats clear the shared sidewalk, then walk forward.
+ * The reservation lasts through the whole walk, including when reading a Section.
  */
 export function createVisitSchedule(random = Math.random) {
 	const state = {
@@ -68,23 +72,29 @@ export function createVisitSchedule(random = Math.random) {
 		progress: 0,
 		variant: 0,
 		x: START_X,
-		yield: 0,
+		waiting: false,
 		walking: 0,
 		gait: 0,
-		seatLane: LANE_Z,
-		seatYaw: Math.PI / 2,
 	};
 	let quiet = 5;
 	let visits = 0;
+	let inStreet = true;
 	function next() {
 		state.phase = sequence[sequence.indexOf(state.phase) + 1] ?? "quiet";
 		state.time = state.progress = 0;
-		if (state.phase === "leave") state.yield = 0;
 		if (state.phase === "quiet")
 			quiet = 15 + MathUtils.clamp(random(), 0, 1) * 15;
 	}
 	return {
 		state,
+		get needsSidewalk() {
+			return (
+				["approach", "sit", "goodbye", "stand", "leave"].includes(
+					state.phase,
+				) ||
+				(state.phase === "quiet" && quiet <= 0 && inStreet)
+			);
+		},
 		update(
 			delta: number,
 			enabled: boolean,
@@ -92,6 +102,15 @@ export function createVisitSchedule(random = Math.random) {
 			cats: readonly Cat[],
 		) {
 			const dt = MathUtils.clamp(delta, 0, 0.05);
+			inStreet = street;
+			const blocked = cats.some(
+				(cat) =>
+					cat.blocksSidewalk ??
+					(cat.position &&
+						cat.position.y < 0.4 &&
+						cat.position.z > 2.05 &&
+						cat.position.x < AISLE_X + 0.6),
+			);
 			if (!enabled) {
 				quiet = 5;
 				visits = 0;
@@ -101,38 +120,27 @@ export function createVisitSchedule(random = Math.random) {
 					progress: 0,
 					variant: 0,
 					x: START_X,
-					yield: 0,
+					waiting: false,
 					walking: 0,
 					gait: 0,
-					seatLane: LANE_Z,
-					seatYaw: Math.PI / 2,
 				});
 				return state;
 			}
 			state.walking = 0;
+			state.waiting = false;
 			if (state.phase === "quiet") {
 				if (street) quiet -= dt;
-				if (quiet <= 0) {
+				if (quiet <= 0 && !blocked && street) {
 					state.phase = "approach";
 					state.variant = visits++ % 2;
 					state.x = START_X;
-					state.yield = state.time = state.progress = 0;
+					state.time = state.progress = 0;
 				}
 				return state;
 			}
 			if (state.phase === "approach" || state.phase === "leave") {
-				const near = cats.filter(
-					(cat) =>
-						cat.position &&
-						cat.position.y < 0.8 &&
-						cat.position.z > 1.75 &&
-						Math.abs(cat.position.x - state.x) < 1.0,
-				);
-				state.yield = MathUtils.damp(state.yield, near.length ? 1 : 0, 6, dt);
-				const waiting =
-					near.some((cat) => !cat.resting) ||
-					(near.length > 0 && state.yield < 0.98);
-				const speed = waiting ? 0 : near.length ? 0.42 : SPEED;
+				const speed = blocked ? 0 : SPEED;
+				state.waiting = blocked;
 				const direction = state.phase === "approach" ? 1 : -1;
 				state.walking = speed / SPEED;
 				state.gait += speed * dt * 14;
@@ -140,26 +148,15 @@ export function createVisitSchedule(random = Math.random) {
 				state.time += dt;
 				if (direction > 0 && state.x >= AISLE_X) {
 					state.x = AISLE_X;
-					state.seatLane = MathUtils.lerp(LANE_Z, CURB_Z, state.yield);
-					state.seatYaw = MathUtils.lerp(Math.PI / 2, Math.PI, state.yield);
 					next();
 				} else if (direction < 0 && state.x <= START_X) next();
 				return state;
 			}
-			// The approach uses the gap left of the stool, not the cat's resting
-			// spot directly in front of it. Let a crossing finish before stepping in.
-			const crossing =
-				(state.phase === "sit" || state.phase === "stand") &&
-				cats.some(
-					(cat) =>
-						cat.position &&
-						cat.position.y < 0.8 &&
-						cat.position.z > 1.8 &&
-						Math.abs(cat.position.x - AISLE_X) < 0.27,
-				);
-			if (!crossing) state.time += dt;
+			state.time += dt;
 			state.progress = Math.min(1, state.time / (durations[state.phase] ?? 1));
-			if (state.progress >= 1) next();
+			state.waiting =
+				state.phase === "goodbye" && state.progress >= 1 && blocked;
+			if (state.progress >= 1 && !state.waiting) next();
 			return state;
 		},
 	};
@@ -194,7 +191,7 @@ function arm(root: Object3D, prefix: string, length: number, side: number) {
 	}
 	return {
 		hand,
-		reach(to: Vector3, orientation: Quaternion) {
+		reach(to: Vector3, orientation: Quaternion, relaxed = 0) {
 			upper.getWorldPosition(origin);
 			direction.subVectors(to, origin);
 			const distance = MathUtils.clamp(
@@ -204,7 +201,15 @@ function arm(root: Object3D, prefix: string, length: number, side: number) {
 			);
 			direction.normalize();
 			target.copy(origin).addScaledVector(direction, distance);
-			bend.set(side * 0.7, -1, -0.15);
+			// A relaxed elbow bends gently behind the body. Reaching opens it
+			// outward; both poles rotate with the character, never the street.
+			bend.set(
+				side * MathUtils.lerp(0.7, 0.1, relaxed),
+				-1,
+				MathUtils.lerp(-0.15, -0.7, relaxed),
+			);
+			upper.parent?.getWorldQuaternion(parentQ);
+			bend.applyQuaternion(parentQ);
 			bend.addScaledVector(direction, -bend.dot(direction)).normalize();
 			elbow
 				.copy(origin)
@@ -245,8 +250,8 @@ function regular(root: Object3D, id: number) {
 		body,
 		head,
 		eyes,
-		left: arm(root, `${prefix}_left`, 0.32, 1),
-		right: arm(root, `${prefix}_right`, 0.32, -1),
+		left: arm(root, `${prefix}_left`, 0.32, -1),
+		right: arm(root, `${prefix}_right`, 0.32, 1),
 		legs: ["left", "right"].map((side) => ({
 			thigh: required(root, `${prefix}_${side}_thigh`),
 			shin: required(root, `${prefix}_${side}_shin`),
@@ -305,6 +310,9 @@ export function createCustomerVisits(root: Object3D, random = Math.random) {
 	}
 	return {
 		state: schedule.state,
+		get needsSidewalk() {
+			return schedule.needsSidewalk;
+		},
 		shadow,
 		update(
 			delta: number,
@@ -342,26 +350,18 @@ export function createCustomerVisits(root: Object3D, random = Math.random) {
 			if (phase === "approach" || phase === "leave" || phase === "quiet") {
 				seated = 0;
 				x = state.x;
-				z = MathUtils.lerp(LANE_Z, CURB_Z, state.yield);
+				z = LANE_Z;
 				walk = state.walking;
-				yaw = MathUtils.lerp(
-					phase === "leave" ? Math.PI * 1.5 : Math.PI / 2,
-					Math.PI,
-					state.yield,
-				);
+				yaw = phase === "leave" ? Math.PI * 1.5 : Math.PI / 2;
 			} else if (phase === "sit" || phase === "stand") {
 				const progress = phase === "sit" ? p : 1 - p;
 				// Step through the gap beside the seat, then settle sideways onto it.
-				z = MathUtils.lerp(
-					phase === "sit" ? state.seatLane : LANE_Z,
-					1.9,
-					smooth(progress / 0.6),
-				);
+				z = MathUtils.lerp(LANE_Z, 1.9, smooth(progress / 0.6));
 				x = MathUtils.lerp(AISLE_X, SEAT_X, smooth((progress - 0.4) / 0.6));
 				seated = smooth((progress - 0.35) / 0.65);
 				walk = Math.sin(Math.PI * smooth(progress / 0.6)) * 0.35;
 				yaw = MathUtils.lerp(
-					phase === "sit" ? state.seatYaw : Math.PI * 1.5,
+					phase === "sit" ? Math.PI / 2 : Math.PI * 1.5,
 					Math.PI,
 					smooth(progress / 0.35),
 				);
@@ -374,8 +374,7 @@ export function createCustomerVisits(root: Object3D, random = Math.random) {
 			customer.travel.rotation.set(0, yaw, 0);
 			customer.body.rotation.set(0, 0, 0);
 			customer.head.rotation.set(
-				detail * Math.sin(clock * 1.2) * 0.025 +
-					(phase === "approach" || phase === "leave" ? state.yield * 0.25 : 0),
+				detail * Math.sin(clock * 1.2) * 0.025 + (state.waiting ? 0.12 : 0),
 				detail * Math.sin(clock * 0.6) * 0.045,
 				0,
 			);
@@ -391,8 +390,8 @@ export function createCustomerVisits(root: Object3D, random = Math.random) {
 			customer.travel.updateWorldMatrix(true, true);
 			orientation.copy(customer.travel.quaternion);
 			// Relaxed hands beside the hips, forward over the knees when seated.
-			left.set(-0.23, 0.61 + seated * 0.38, 0.07 + seated * 0.19);
-			right.set(0.23, 0.61 + seated * 0.38, 0.07 + seated * 0.19);
+			left.set(-0.23, 0.5 + seated * 0.49, 0.03 + seated * 0.23);
+			right.set(0.23, 0.5 + seated * 0.49, 0.03 + seated * 0.23);
 			left.z += Math.sin(state.gait) * walk * 0.09;
 			right.z -= Math.sin(state.gait) * walk * 0.09;
 			customer.travel.localToWorld(left);
@@ -506,8 +505,9 @@ export function createCustomerVisits(root: Object3D, random = Math.random) {
 			customer.left.reach(
 				left,
 				handOrientation.copy(orientation).multiply(tilt),
+				1 - seated,
 			);
-			customer.right.reach(right, orientation);
+			customer.right.reach(right, orientation, 1 - seated);
 			// Render at the solved grip, even at a reach limit.
 			(customerCup ? customer.left.hand : jjCup.hand).getWorldPosition(
 				cupTarget,

@@ -57,9 +57,14 @@ export function createCharacterMotion(root: Object3D) {
 	}
 	let time = 0;
 	let moving = false;
-	return (delta: number, enabled: boolean, street = true) => {
+	return (
+		delta: number,
+		enabled: boolean,
+		street = true,
+		clearSidewalk = false,
+	) => {
 		const step = Math.max(0, Math.min(delta, 0.05));
-		cats.update(step, enabled, street);
+		cats.update(step, enabled, street, clearSidewalk);
 		if (!enabled) {
 			if (moving) {
 				for (const joint of joints.values()) {

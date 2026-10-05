@@ -32,11 +32,17 @@ Two robot regulars take turns visiting JJ at the middle counter stool. After
 Entry, the first arrives in about five seconds; a visit takes about 30 seconds,
 plus any pauses to yield to the cats, followed by a 15–30-second quiet gap.
 They greet JJ, receive milk and a cookie, eat and drink, return the cup, and
-leave to the left. Opening another Station lets the current visit finish and
-stops new arrivals. Reduced motion shows one still seated customer with food.
+leave to the left. Customers wait offscreen or at their stool until cats clear
+the shared sidewalk, then walk facing their direction of travel. A cat already
+on the route continues to the clear space on the right; cats on stools wait
+until the customer's walk finishes. Opening another Station lets the current
+visit finish and stops new arrivals. Reduced motion shows one still seated customer with food.
 Light keeps the whole visit while omitting secondary gestures and the customer
 contact shadow. The robots and detachable serving Props are built in Blender
 with portable baked shading; `customerVisits.ts` coordinates their rigid joints.
+
+`blender -b --python-exit-code 1 --python blender/check_counter.py` checks that
+the three counter cookies rest flat inside the plate rim without overlapping.
 
 The cog button in Street View opens Quality Tier options: Auto, Full, Balanced,
 and Light. Use arrow keys to select an option, or Escape to close the panel.

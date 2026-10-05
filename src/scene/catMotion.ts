@@ -166,6 +166,14 @@ function cat(root: Object3D, id: number, route: readonly Point[]) {
 		get resting() {
 			return journey === null;
 		},
+		get blocksSidewalk() {
+			// Include committed hops/steps before their position reaches the lane.
+			const blocks = (index: number) => id === 1 && index >= 3 && index <= 4;
+			return (
+				blocks(node) ||
+				!!(journey && (blocks(journey.fromNode) || blocks(journey.toNode)))
+			);
+		},
 		get position() {
 			return travel?.object.position;
 		},
@@ -191,9 +199,10 @@ function cat(root: Object3D, id: number, route: readonly Point[]) {
 			street: boolean,
 			hunt: "prepare" | "chase" | null,
 			watch: boolean,
+			clearSidewalk = false,
 		) {
 			if (!travel) return;
-			if (!street && wasStreet && journey && !journey.hop) {
+			if (!street && wasStreet && journey && !journey.hop && !clearSidewalk) {
 				// Pick the nearer endpoint along the current permitted edge. Hops
 				// always land first; never redirect a cat while it is airborne.
 				const j = journey;
@@ -206,18 +215,30 @@ function cat(root: Object3D, id: number, route: readonly Point[]) {
 			}
 			if (street && !wasStreet) rest = Math.max(rest, id === 1 ? 4 : 20);
 			wasStreet = street;
-			if (!street && !journey) return;
+			if (
+				!street &&
+				!journey &&
+				!(clearSidewalk && id === 1 && node >= 3 && node < 5)
+			)
+				return;
 			idleTime += delta;
 			if (!journey) {
 				rest -= delta;
-				if (hunt === "prepare" && node !== 3)
+				if (clearSidewalk && id === 1 && node >= 3 && hunt !== "chase") {
+					// Finish along the existing route to the clear space on the right.
+					// This also lets a customer leave after a Section opens.
+					if (node < 5) depart(node + 1);
+					else rest = Math.max(rest, 2);
+				} else if (hunt === "prepare" && node !== 3)
 					depart(node + (node < 3 ? 1 : -1));
 				else if (hunt === "chase" && node < 6) depart(node + 1, true);
 				else if (!hunt && rest <= 0 && street) {
 					const last = id === 1 ? 4 : 2;
 					if (node >= last) direction = -1;
 					if (node === 0) direction = 1;
-					depart(node + direction);
+					// Stay on the stool while a customer owns the shared sidewalk.
+					if (!(clearSidewalk && id === 1 && node === 2 && direction > 0))
+						depart(node + direction);
 				}
 			}
 			let moving = 0;
@@ -287,7 +308,12 @@ export function createCatMotion(root: Object3D) {
 
 	return {
 		cats: [skadi, freya],
-		update(delta: number, enabled: boolean, street: boolean) {
+		update(
+			delta: number,
+			enabled: boolean,
+			street: boolean,
+			clearSidewalk = false,
+		) {
 			if (!enabled) {
 				if (enabledBefore) {
 					skadi.reset();
@@ -305,13 +331,14 @@ export function createCatMotion(root: Object3D) {
 			if (street) streetTime += delta;
 			if (
 				street &&
+				!clearSidewalk &&
 				!chase &&
 				streetTime >= nextChase &&
 				mouse &&
 				skadi.position
 			)
 				chase = "prepare";
-			if (!street && chase === "prepare") {
+			if ((!street || clearSidewalk) && chase === "prepare") {
 				chase = null;
 				nextChase = streetTime + 180;
 			}
@@ -334,6 +361,7 @@ export function createCatMotion(root: Object3D) {
 				street,
 				hunt === "prepare" || hunt === "chase" ? hunt : null,
 				false,
+				clearSidewalk,
 			);
 			freya.update(delta, street, null, chase === "chase");
 			if (mouse && chase === "chase") {

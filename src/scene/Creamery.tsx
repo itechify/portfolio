@@ -150,7 +150,7 @@ export function Creamery({
 
 	useFrame((state, delta) => {
 		if (!document.hidden) {
-			animateCharacters(delta, motion, street);
+			animateCharacters(delta, motion, street, visits.needsSidewalk);
 			visits.update(delta, motion, street, cats, quality);
 		}
 		if (!document.hidden) tvIdle.current?.update(delta, motion && !tvActive);
