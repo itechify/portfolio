@@ -198,7 +198,10 @@ if (process.argv.includes("--cats")) {
 			time: 0,
 		};
 	});
-	for (const seconds of [0, 8.6, 25.1, 45.5, 73.5, 77, 102.9, 106]) {
+	// Include push-off, flight and landing as well as each cat's walking pose.
+	for (const seconds of [
+		0, 8.6, 9.2, 29.8, 30.2, 30.4, 30.7, 31.1, 47.6, 79.2, 102.9, 106,
+	]) {
 		const positions = await page.evaluate((seconds) => {
 			const { state, update } = window.catReview;
 			let cats = update(0, true, true);
@@ -228,6 +231,71 @@ if (process.argv.includes("--cats")) {
 		}, seconds);
 		await page.screenshot({ path: `${out}/cats-${seconds}.png` });
 		console.log("Cat pose", seconds, positions);
+	}
+	// Side-on contact sheets expose over-reaching paws, a sagging back, and
+	// coat intersections that a single flattering three-quarter pose hides.
+	for (const [id, start] of [
+		[1, 8.6],
+		[2, 47.6],
+	]) {
+		const strip = await page.evaluate(
+			({ id, start }) => {
+				const { state, update } = window.catReview;
+				update(0, false, true);
+				window.catReview.time = 0;
+				const sheet = document.createElement("canvas");
+				sheet.width = 1600;
+				sheet.height = 600;
+				const ctx = sheet.getContext("2d");
+				for (let frame = 0; frame < 8; frame++) {
+					const seconds = start + frame * 0.1;
+					while (window.catReview.time < seconds) {
+						update(1 / 60, true, true);
+						window.catReview.time += 1 / 60;
+					}
+					update(0, true, true).forEach((cat, i) => {
+						const shadow = state.scene.getObjectByName(
+							`prop_cat_contact_shadow_${i + 1}`,
+						);
+						shadow.position.set(
+							cat.position.x,
+							cat.shadowHeight + 0.003,
+							cat.position.z,
+						);
+						shadow.material.opacity = cat.shadowOpacity;
+					});
+					const cat = state.scene.getObjectByName(`rig_prop_cat_${id}_travel`);
+					const p = cat.position;
+					const offset = p
+						.clone()
+						.set(0.75, 0.23, 0.1)
+						.applyQuaternion(cat.quaternion);
+					state.camera.position.copy(p).add(offset);
+					state.camera.lookAt(p.x, p.y + 0.14, p.z);
+					state.camera.updateMatrixWorld();
+					state.gl.render(state.scene, state.camera);
+					const x = (frame % 4) * 400;
+					const y = Math.floor(frame / 4) * 300;
+					ctx.drawImage(
+						state.gl.domElement,
+						0,
+						0,
+						state.gl.domElement.width,
+						state.gl.domElement.height,
+						x,
+						y,
+						400,
+						300,
+					);
+					ctx.fillStyle = "white";
+					ctx.font = "16px sans-serif";
+					ctx.fillText(`${seconds.toFixed(1)} s`, x + 12, y + 24);
+				}
+				return sheet.toDataURL("image/png").split(",")[1];
+			},
+			{ id, start },
+		);
+		writeFileSync(`${out}/cat-${id}-stride.png`, Buffer.from(strip, "base64"));
 	}
 	for (const [label, width, height] of [
 		["street", 1280, 800],

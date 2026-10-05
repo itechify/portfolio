@@ -6,6 +6,13 @@ import {
 	Quaternion,
 	Vector3,
 } from "three";
+import {
+	createBlink,
+	createFootstep,
+	createGaze,
+	createLeg,
+	ease,
+} from "./limbMotion.ts";
 import type { QualityTier } from "./quality.ts";
 
 type Cat = {
@@ -35,7 +42,18 @@ const SEAT_X = -0.95;
 const LANE_Z = 2.4;
 const SPEED = 0.65;
 // Let each completed gesture settle before beginning the next action.
-const ACTION_PAUSE = 1.2;
+const pauses: Partial<Record<Phase, number>> = {
+	sit: 0.8,
+	greet: 0.55,
+	prepare: 0.35,
+	cup: 0.6,
+	cookie: 1.1,
+	enjoy: 2.4,
+	return: 0.7,
+	clear: 0.5,
+	goodbye: 0.8,
+	stand: 0.3,
+};
 const smooth = (value: number) => {
 	const t = MathUtils.clamp(value, 0, 1);
 	return t * t * (3 - 2 * t);
@@ -86,6 +104,8 @@ export function createVisitSchedule(random = Math.random) {
 	};
 	let quiet = 5;
 	let visits = 0;
+	let speed = 0;
+	let pace = 1;
 	let inStreet = true;
 	function next() {
 		state.phase = sequence[sequence.indexOf(state.phase) + 1] ?? "quiet";
@@ -122,6 +142,7 @@ export function createVisitSchedule(random = Math.random) {
 			if (!enabled) {
 				quiet = 5;
 				visits = 0;
+				speed = 0;
 				Object.assign(state, {
 					phase: "quiet",
 					time: 0,
@@ -141,18 +162,27 @@ export function createVisitSchedule(random = Math.random) {
 				if (quiet <= 0 && !blocked && street) {
 					state.phase = "approach";
 					state.variant = visits++ % 2;
+					pace = 0.94 + MathUtils.clamp(random(), 0, 1) * 0.12;
+					speed = 0;
 					state.x = START_X;
 					state.time = state.progress = 0;
 				}
 				return state;
 			}
 			if (state.phase === "approach" || state.phase === "leave") {
-				const speed = blocked ? 0 : SPEED;
+				const remaining = Math.abs(
+					state.x - (state.phase === "approach" ? AISLE_X : START_X),
+				);
+				const desiredSpeed = Math.min(
+					SPEED * pace,
+					Math.sqrt(2 * 0.8 * remaining),
+				);
+				speed = blocked ? 0 : Math.min(desiredSpeed, speed + dt * 0.8);
 				state.waiting = blocked;
 				const direction = state.phase === "approach" ? 1 : -1;
 				state.walking = speed / SPEED;
 				state.gait += speed * dt * 14;
-				state.x += direction * speed * dt;
+				state.x += direction * Math.min(remaining, speed * dt);
 				state.time += dt;
 				if (direction > 0 && state.x >= AISLE_X) {
 					state.x = AISLE_X;
@@ -161,11 +191,19 @@ export function createVisitSchedule(random = Math.random) {
 				return state;
 			}
 			state.time += dt;
-			const duration = durations[state.phase] ?? 1;
+			// Preserve the three-second pour; vary enjoyment and the pauses
+			// without changing grip ownership during a handoff.
+			const duration =
+				(durations[state.phase] ?? 1) *
+				(state.phase === "enjoy" ? 1 / pace : 1);
 			state.progress = Math.min(1, state.time / duration);
 			state.waiting =
 				state.phase === "goodbye" && state.progress >= 1 && blocked;
-			if (state.time >= duration + ACTION_PAUSE && !state.waiting) next();
+			if (
+				state.time >= duration + (pauses[state.phase] ?? 0) / pace &&
+				!state.waiting
+			)
+				next();
 			return state;
 		},
 	};
@@ -259,13 +297,20 @@ function regular(root: Object3D, id: number) {
 		body,
 		head,
 		eyes,
+		blink: createBlink(id * 0.9),
 		left: arm(root, `${prefix}_left`, 0.32, -1),
 		right: arm(root, `${prefix}_right`, 0.32, 1),
-		legs: ["left", "right"].map((side) => ({
-			thigh: required(root, `${prefix}_${side}_thigh`),
-			shin: required(root, `${prefix}_${side}_shin`),
-			foot: required(root, `${prefix}_${side}_foot`),
+		feet: ["left", "right"].map((side) => ({
+			leg: createLeg(
+				required(root, `${prefix}_${side}_thigh`),
+				required(root, `${prefix}_${side}_shin`),
+				required(root, `${prefix}_${side}_foot`),
+			),
+			step: createFootstep(),
 		})),
+		gaze: createGaze(head, 0.42, 0.28),
+		previousPosition: travel.position.clone(),
+		gait: 0,
 	};
 }
 
@@ -280,6 +325,8 @@ export function createCustomerVisits(root: Object3D, random = Math.random) {
 	const jjTray = arm(root, "barista_tray", 0.43, -1);
 	const jjHead = required(root, "barista_head");
 	const jjTravel = required(root, "barista_travel");
+	const jjBody = required(root, "barista_body");
+	const jjGaze = createGaze(jjHead, 0.55, 0.38);
 	const cup = required(root, "service_cup");
 	const milk = required(root, "service_milk");
 	const tray = required(root, "service_tray");
@@ -315,6 +362,11 @@ export function createCustomerVisits(root: Object3D, random = Math.random) {
 	const handOrientation = new Quaternion();
 	const tilt = new Quaternion();
 	const xAxis = new Vector3(1, 0, 0);
+	const footTarget = new Vector3();
+	const velocity = new Vector3();
+	const pole = new Vector3();
+	const attention = new Vector3();
+	let priorPhase: Phase = "quiet";
 	const shadow = {
 		position: regulars[0].travel.position,
 		shadowHeight: 0,
@@ -369,6 +421,14 @@ export function createCustomerVisits(root: Object3D, random = Math.random) {
 						: 0;
 			jjTravel.position.set(-0.9 - back * 0.4, 0, 0.55);
 			jjTravel.rotation.set(0, back * Math.PI, 0);
+			const working = ["prepare", "cup", "cookie", "return", "clear"].includes(
+				phase,
+			);
+			const lean = working ? 0.055 * pulse(p) : 0;
+			jjBody.rotation.x = still ? 0 : lean;
+			jjBody.rotation.y = still
+				? 0
+				: -0.035 * pulse(p) * (phase === "cookie" ? -1 : 1);
 			jjTravel.updateWorldMatrix(true, true);
 			jjTravel.localToWorld(rightIdle.set(0.3, 0.78, 0.1));
 			jjTravel.localToWorld(leftIdle.set(-0.3, 0.78, 0.1));
@@ -400,34 +460,78 @@ export function createCustomerVisits(root: Object3D, random = Math.random) {
 			}
 			customer.travel.position.set(
 				x,
-				0.005 * Math.abs(Math.sin(state.gait)) * walk,
+				seated === 1 ? 0 : -0.055 * (1 - seated),
 				z,
 			);
 			customer.travel.rotation.set(0, yaw, 0);
-			customer.body.rotation.set(0, 0, 0);
-			customer.head.rotation.set(
-				detail * Math.sin(clock * 1.2) * 0.025 + (state.waiting ? 0.12 : 0),
-				detail * Math.sin(clock * 0.6) * 0.045,
-				0,
+			velocity
+				.subVectors(customer.travel.position, customer.previousPosition)
+				.setY(0);
+			if (priorPhase === "quiet" || still) {
+				velocity.set(0, 0, 0);
+				for (const foot of customer.feet) foot.step.reset();
+			}
+			customer.gait += velocity.length() * 14;
+			customer.previousPosition.copy(customer.travel.position);
+			if (dt > 0) velocity.divideScalar(dt);
+			velocity.clampLength(0, 0.8);
+			walk = Math.min(1, velocity.length() / SPEED);
+			customer.travel.position.y += 0.006 * Math.sin(customer.gait) ** 2 * walk;
+			// Lean forward over the support feet before sitting or rising.
+			const shift = phase === "sit" || phase === "stand" ? pulse(p) * 0.19 : 0;
+			const settle = phase === "enjoy" ? detail * pulse((t - 10) / 3.5) : 0;
+			customer.body.rotation.set(
+				shift + 0.025 * seated + 0.015 * walk,
+				detail * 0.015 * Math.sin(customer.gait) * walk,
+				settle * (state.variant ? -0.025 : 0.025) +
+					detail * 0.012 * Math.sin(customer.gait) * walk,
 			);
-			customer.eyes.scale.y =
-				1 - detail * 0.92 * pulse(((clock + state.variant) % 6) / 0.23);
-			customer.legs.forEach((leg, i) => {
-				const stride = Math.sin(state.gait + i * Math.PI) * walk;
-				leg.thigh.rotation.x = (-Math.PI / 2) * seated + stride * 0.4;
-				leg.shin.rotation.x =
-					(Math.PI / 2) * seated + Math.max(0, -stride) * 0.55;
-				leg.foot.rotation.x = -leg.thigh.rotation.x - leg.shin.rotation.x;
-			});
+			customer.head.rotation.z = 0;
+			customer.eyes.scale.y = customer.blink(dt, !!detail);
 			customer.travel.updateWorldMatrix(true, true);
 			orientation.copy(customer.travel.quaternion);
+			pole.set(0, 0, 1).applyQuaternion(orientation);
+			customer.feet.forEach(({ leg, step }, i) => {
+				footTarget.set(i === 0 ? -0.087 : 0.087, 0, 0);
+				customer.travel
+					.localToWorld(footTarget)
+					.addScaledVector(velocity, 0.36);
+				footTarget.y = 0.1;
+				step.update(
+					dt,
+					footTarget,
+					orientation,
+					!customer.feet[1 - i].step.swinging,
+					walk > 0.5 ? 0.24 : 0.07,
+					walk > 0.5 ? 0.3 : 0.26,
+					0.065,
+				);
+				footTarget.set(i === 0 ? -0.087 : 0.087, 0.322, 0.16);
+				customer.travel.localToWorld(footTarget);
+				const liftToRing = ease(
+					MathUtils.clamp((seated - i * 0.08) / (1 - i * 0.08), 0, 1),
+				);
+				footTarget.lerpVectors(step.target, footTarget, liftToRing);
+				footTarget.y += Math.sin(Math.PI * liftToRing) * 0.055;
+				tilt.slerpQuaternions(step.rotation, orientation, liftToRing);
+				leg.solve(footTarget, tilt, pole);
+			});
 			// Relaxed hands beside the hips, forward over the knees when seated.
 			left.set(-0.23, 0.5 + seated * 0.49, 0.03 + seated * 0.23);
 			right.set(0.23, 0.5 + seated * 0.49, 0.03 + seated * 0.23);
-			left.z += Math.sin(state.gait) * walk * 0.09;
-			right.z -= Math.sin(state.gait) * walk * 0.09;
+			left.z += Math.sin(customer.gait) * walk * 0.065;
+			right.z -= Math.sin(customer.gait) * walk * 0.065;
 			customer.travel.localToWorld(left);
 			customer.travel.localToWorld(right);
+			if (seated < 0.2) {
+				attention.set(0, 1.2, 3);
+				customer.travel.localToWorld(attention);
+			} else if (["cup", "cookie", "enjoy", "return"].includes(phase)) {
+				attention.copy(phase === "cookie" ? trayMeet : cupRest);
+				if (phase === "enjoy" && t > 9) jjHead.getWorldPosition(attention);
+			} else jjHead.getWorldPosition(attention);
+			customer.gaze(attention, dt, enabled);
+			customer.head.localToWorld(mouth.set(0, 0.085, 0.141));
 			jjRight.copy(rightIdle);
 			jjLeft.copy(leftIdle);
 			cupTarget.copy(cupDock);
@@ -445,6 +549,7 @@ export function createCustomerVisits(root: Object3D, random = Math.random) {
 			stream.visible = false;
 			if (phase === "prepare") {
 				jjRight.lerp(cupDock, smooth((t - 2) / 2));
+				jjRight.y += 0.04 * pulse((t - 2) / 2);
 				wave.copy(trayDock).y -= 0.055;
 				jjLeft.lerp(wave, smooth((t - 2) / 2));
 				jjHoldsCup = jjHoldsTray = t >= 4;
@@ -474,7 +579,6 @@ export function createCustomerVisits(root: Object3D, random = Math.random) {
 				right.lerp(wave, greeting);
 				customer.head.rotation.x +=
 					greeting * (state.variant === 0 ? 0.07 : 0.2);
-				jjHead.rotation.x = greeting * 0.1;
 			}
 			if (phase === "cup") {
 				jjHoldsCup = true;
@@ -482,6 +586,8 @@ export function createCustomerVisits(root: Object3D, random = Math.random) {
 				const reach = smooth(p / 0.5);
 				jjRight.lerp(cupMeet, reach);
 				left.lerp(cupMeet, reach);
+				jjRight.y += 0.025 * pulse(p / 0.5);
+				left.y += 0.015 * pulse(p / 0.5);
 				cupTarget.copy(jjRight);
 				if (p >= 0.5) {
 					customerCup = true;
@@ -580,10 +686,24 @@ export function createCustomerVisits(root: Object3D, random = Math.random) {
 			if (customerCookie) customer.right.hand.getWorldPosition(cookieTarget);
 			else cookieTarget.copy(trayTarget).add(wave.set(0.045, 0.03, 0));
 			place(cookie, cookieTarget);
-			if (phase !== "quiet" && phase !== "approach" && phase !== "leave") {
-				jjHead.rotation.y = -0.035;
-				jjHead.rotation.x += detail * Math.sin(clock) * 0.015;
+			// Attention leads the task: JJ looks to the dock before reaching,
+			// then follows the shared cup/tray or the customer's face.
+			if (phase === "prepare" || phase === "clear") attention.copy(cupTarget);
+			else if (phase === "cup" || phase === "return") attention.copy(cupMeet);
+			else if (phase === "cookie") attention.copy(trayMeet);
+			else if (phase !== "quiet") customer.head.getWorldPosition(attention);
+			else if (clock < 3) attention.set(0, 3.4, 14);
+			else {
+				const activeCat = cats.find(
+					(cat) => !cat.resting && cat.position && cat.position.y > 0.8,
+				);
+				if (activeCat?.position) attention.copy(activeCat.position).y += 0.2;
+				else jjTravel.localToWorld(attention.set(0, 1.7, 3));
 			}
+			jjGaze(attention, dt, enabled);
+			if (phase === "greet" || phase === "goodbye")
+				jjHead.rotation.x += pulse(p) * 0.07;
+			priorPhase = phase;
 			return state;
 		},
 	};

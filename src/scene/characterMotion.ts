@@ -1,5 +1,6 @@
 import type { Object3D } from "three";
 import { createCatMotion } from "./catMotion.ts";
+import { createBlink } from "./limbMotion.ts";
 
 /** A soft, occasional gesture with a still interval between repetitions. */
 function gesture(
@@ -13,16 +14,13 @@ function gesture(
 	return Math.sin((phase / duration) * Math.PI) ** 2;
 }
 
-function blink(time: number, period: number) {
-	return 1 - 0.94 * gesture(time, period, 0.4, 0.22);
-}
-
 /** Bind once. Per-frame work only changes rigid pivots.
  * The barista keeps small gestures; cats have portable baked shading (ADR 0001).
  * Blender exports these unrotated Empty pivots in glTF's Y-up coordinates.
  */
 export function createCharacterMotion(root: Object3D) {
 	const cats = createCatMotion(root);
+	const blink = createBlink(0.7);
 	// Customer visits own JJ's arms and serving Props; these are his idle face.
 	const names = ["barista_head", "barista_eyes"];
 	const joints = new Map(
@@ -74,6 +72,7 @@ export function createCharacterMotion(root: Object3D) {
 			}
 			moving = false;
 			time = 0;
+			blink(0, false);
 			return cats.cats;
 		}
 		moving = true;
@@ -82,7 +81,7 @@ export function createCharacterMotion(root: Object3D) {
 		const serve = gesture(time, 13, 3, 4);
 		const glance = gesture(time, 17, 9, 5);
 		rotate("barista_head", 0.065 * serve, 0.16 * glance - 0.09 * serve);
-		stretch("barista_eyes", blink(time, 6.7));
+		stretch("barista_eyes", blink(step));
 		return cats.cats;
 	};
 }
