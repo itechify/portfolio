@@ -848,6 +848,11 @@ def barista(m):
     for side, suffix in ((-1, "tray"), (1, "cup")):
         robot_arm(m, f"barista_{suffix}", (-0.9 + side * 0.28, -0.55, 1.5),
                   0.43, 0.43, m.teal_pale)
+    articulation("rig_barista_travel", (-0.9, -0.55, 0), [
+        bpy.data.objects[name] for name in (
+            "rig_barista_body", "rig_barista_head",
+            "rig_barista_cup_upper", "rig_barista_tray_upper")
+    ])
     serving_props(m)
 
 
@@ -893,7 +898,7 @@ def serving_props(m):
     cup = articulation("rig_service_cup", (x, y, z), [
         shell,
         ring("service_cup_rim", (x, y, z + 0.064), 0.049, 0.007, m.pink),
-        cyl("service_cup_inside", (x, y, z + 0.035), 0.043, 0.006, m.purple),
+        cyl("service_cup_inside", (x, y, z - 0.04), 0.035, 0.006, m.purple),
         box("service_cup_label", (x, y - 0.048, z), (0.046, 0.008, 0.036), m.pink),
     ])
     milk = articulation("rig_service_milk", (x, y, z + 0.059), [
@@ -904,7 +909,6 @@ def serving_props(m):
     tray = articulation("rig_service_tray", (x, y, z), [
         cyl("service_tray", (x, y, z), 0.13, 0.02, m.steel_dull),
         cyl("service_tray_inset", (x, y, z + 0.012), 0.112, 0.006, m.pink_pale),
-        cyl("service_spare_cookie", (x - 0.045, y, z + 0.03), 0.043, 0.024, m.cookie),
     ])
     x += 0.045
     parts = [cyl("service_cookie", (x, y, z + 0.03), 0.043, 0.024, m.cookie)]
@@ -1038,6 +1042,17 @@ def counter_interior(m):
         cyl(f"bottle_{i}_neck", (x, 0.17, 1.72), 0.015, 0.06, m.pink, verts=10)
     for i in range(5):
         box(f"shelf2_box_{i}", (-2.2 + i * 0.3, 0.17, 1.2), (0.2, 0.16, 0.16), (m.pink, m.teal, m.cream)[i % 3])
+    # Dedicated milk tap and cookie pickup ledge behind JJ. Runtime coordinates
+    # are (x, height, -y); the cup docks directly beneath this nozzle.
+    box("prep_ledge", (-1.45, -0.12, 1.085), (1.25, 0.5, 0.05), m.blue_mid)
+    box("milk_dispenser", (-1.85, 0.02, 1.51), (0.28, 0.24, 0.46), m.teal_pale)
+    box("milk_dispenser_label", (-1.85, -0.105, 1.56), (0.23, 0.012, 0.16), m.purple)
+    text("milk_dispenser_text", "MILK", 0.052, m.white, (-1.85, -0.115, 1.56), extrude=0.001)
+    cyl("milk_tap_pipe", (-1.85, -0.20, 1.39), 0.023, 0.20, m.steel, axis="Y")
+    cyl("milk_tap_nozzle", (-1.85, -0.30, 1.365), 0.025, 0.065, m.steel)
+    articulation("rig_service_stream", (-1.85, -0.30, 1.286), [
+        cyl("service_milk_stream", (-1.85, -0.30, 1.286), 0.009, 0.097, m.white)
+    ])
     # soft-serve machine at the right end of the back counter
     box("softserve_body", (-0.45, -0.05, 1.3), (0.5, 0.45, 0.7), m.white)
     box("softserve_panel", (-0.45, -0.29, 1.45), (0.4, 0.01, 0.2), m.pink)
@@ -1645,7 +1660,7 @@ def regroup():
     characters, animals, customers = [], [], []
     for joint, d in per_joint.items():
         if d["detail"]:
-            if joint.startswith(("rig_prop_customer_", "rig_service_", "rig_barista_cup_", "rig_barista_tray_")):
+            if joint.startswith(("rig_prop_customer_", "rig_service_", "rig_barista_")):
                 target = customers
             else:
                 target = animals if joint.startswith(("rig_prop_cat_", "rig_prop_mouse")) else characters
@@ -1779,7 +1794,7 @@ def bake_all(scene, groups, samples):
     moving = [(name, objs, size) for name, objs, size in groups if name in ("animals", "customers")]
     # Moving characters and serving Props leave no permanent baked shadows.
     hidden = [o for o in mesh_objects() if o.parent and o.parent.name.startswith(
-        ("rig_prop_cat_", "rig_prop_mouse", "rig_prop_customer_", "rig_service_", "rig_barista_cup_", "rig_barista_tray_"))]
+        ("rig_prop_cat_", "rig_prop_mouse", "rig_prop_customer_", "rig_service_", "rig_barista_"))]
     for o in hidden:
         o.hide_render = True
     for name, objs, size in groups:

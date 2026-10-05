@@ -68,6 +68,11 @@ export async function reviewCustomers(page, out) {
 		["approach", 3],
 		["sit", 1.5],
 		["greet", 1.2],
+		["prepare", 2],
+		["prepare", 4.5],
+		["prepare", 6.5],
+		["prepare", 9],
+		["prepare", 13],
 		["cup", 2],
 		["cup", 4.6],
 		["cookie", 2.5],
@@ -76,6 +81,8 @@ export async function reviewCustomers(page, out) {
 		["enjoy", 9],
 		["enjoy", 15],
 		["return", 2.5],
+		["clear", 3],
+		["clear", 9],
 		["goodbye", 1.4],
 		["stand", 1.5],
 		["leave", 3],
@@ -95,6 +102,19 @@ export async function reviewCustomers(page, out) {
 			{ phase, seconds },
 		);
 		await page.screenshot({ path: `${out}/customer-${phase}-${seconds}.png` });
+		if (phase === "prepare" && seconds === 6.5) {
+			await page.evaluate(() => window.customerReview.render(false));
+			await page.screenshot({ path: `${out}/customer-dispensing-street.png` });
+			await page.evaluate(() => {
+				const { state } = window.customerReview;
+				state.camera.position.set(-2.1, 1.55, 1.2);
+				state.camera.lookAt(-1.75, 1.35, 0.3);
+				state.camera.updateMatrixWorld();
+				for (const sub of state.internal.subscribers)
+					if (sub.priority > 0) sub.ref.current(state, 0);
+			});
+			await page.screenshot({ path: `${out}/customer-dispensing-detail.png` });
+		}
 		console.log("Customer pose", phase, seconds, state.variant);
 	}
 	await page.evaluate(() => {

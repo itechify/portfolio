@@ -37,11 +37,71 @@ function advance(schedule, seconds, enabled = true, street = true, cats = []) {
 	return { ...schedule.state };
 }
 
+test("JJ prepares food only after the order, fills under the tap, and puts the empty Props away", () => {
+	const root = rig();
+	const visits = createCustomerVisits(root, () => 0);
+	const cup = root.getObjectByName("rig_service_cup");
+	const tray = root.getObjectByName("rig_service_tray");
+	const milk = root.getObjectByName("rig_service_milk");
+	const stream = root.getObjectByName("rig_service_stream");
+	const jj = root.getObjectByName("rig_barista_travel");
+	const hand = new Vector3();
+	visits.update(0, true, true, []);
+	const parkedCup = cup.position.clone();
+	const parkedTray = tray.position.clone();
+	let ordered = false;
+	let filled = false;
+	let previousMilkHeight = -Infinity;
+	let dispensingFrames = 0;
+	let cleared = false;
+	for (let i = 0; i < 110 * 60; i++) {
+		const state = visits.update(1 / 60, true, true, []);
+		if (state.phase === "greet") ordered = true;
+		if (["quiet", "approach", "sit", "greet"].includes(state.phase)) {
+			assert.ok(cup.position.distanceTo(parkedCup) < 0.001);
+			assert.ok(tray.position.distanceTo(parkedTray) < 0.001);
+			assert.equal(milk.visible, false);
+			for (const side of ["cup", "tray"]) {
+				root.getObjectByName(`rig_barista_${side}_hand`).getWorldPosition(hand);
+				assert.ok(hand.y < 0.9, "JJ waits with his hands lowered");
+			}
+		}
+		if (stream.visible) {
+			assert.ok(ordered);
+			assert.equal(state.phase, "prepare");
+			assert.ok(Math.abs(jj.rotation.y - Math.PI) < 0.001);
+			assert.ok(
+				cup.position.distanceTo(parkedCup) < 0.001,
+				"the cup stays under the nozzle while filling",
+			);
+			assert.ok(milk.visible && milk.position.y >= previousMilkHeight);
+			previousMilkHeight = milk.position.y;
+			dispensingFrames++;
+			filled = true;
+		}
+		if (state.phase === "cup")
+			assert.ok(filled, "dispense milk before serving");
+		if (state.phase === "goodbye") {
+			assert.ok(cup.position.distanceTo(parkedCup) < 0.001);
+			assert.ok(tray.position.distanceTo(parkedTray) < 0.001);
+			assert.equal(milk.visible, false);
+			assert.equal(stream.visible, false);
+			assert.ok(Math.abs(jj.rotation.y) < 0.001);
+			cleared = true;
+		}
+	}
+	assert.ok(
+		dispensingFrames >= 179 && dispensingFrames <= 181,
+		"one visible three-second pour",
+	);
+	assert.ok(cleared);
+});
+
 test("walking arms hang beside the torso rather than folding across the chest", () => {
 	const root = rig();
 	const visits = createCustomerVisits(root, () => 0);
 	const point = new Vector3();
-	for (let i = 0; i < 90 * 60; i++) {
+	for (let i = 0; i < 110 * 60; i++) {
 		const state = visits.update(1 / 60, true, true, []);
 		if (state.walking < 0.9) continue;
 		const travel = root.getObjectByName(
@@ -112,19 +172,19 @@ test("Entry and Street View gate arrivals; quiet gaps and two regulars repeat", 
 		assert.equal(advance(schedule, 0.2).phase, "approach");
 		const phases = new Set();
 		let visitSeconds = 0;
-		for (let i = 0; i < 80 * 60 && schedule.state.phase !== "quiet"; i++) {
+		for (let i = 0; i < 110 * 60 && schedule.state.phase !== "quiet"; i++) {
 			phases.add(schedule.state.phase);
 			schedule.update(1 / 60, true, true, []);
 			visitSeconds += 1 / 60;
 		}
 		assert.equal(schedule.state.phase, "quiet");
 		assert.ok(
-			visitSeconds > 65 && visitSeconds < 75,
-			"an unhurried visit lasts about 70 seconds",
+			visitSeconds > 90 && visitSeconds < 100,
+			"an unhurried visit includes preparation and clearing up",
 		);
 		assert.equal(
 			phases.size,
-			10,
+			12,
 			"complete service, consumption and departure",
 		);
 		assert.equal(advance(schedule, 15 + random * 15 - 0.1).phase, "quiet");
@@ -137,19 +197,21 @@ test("every active phase completes when a Section opens; no queued arrivals", ()
 		"approach",
 		"sit",
 		"greet",
+		"prepare",
 		"cup",
 		"cookie",
 		"enjoy",
 		"return",
+		"clear",
 		"goodbye",
 		"stand",
 		"leave",
 	]) {
 		const schedule = createVisitSchedule(() => 0.5);
-		for (let i = 0; i < 80 * 60 && schedule.state.phase !== phase; i++)
+		for (let i = 0; i < 110 * 60 && schedule.state.phase !== phase; i++)
 			schedule.update(1 / 60, true, true, []);
 		assert.equal(schedule.state.phase, phase);
-		assert.equal(advance(schedule, 90, true, false).phase, "quiet");
+		assert.equal(advance(schedule, 120, true, false).phase, "quiet");
 		assert.equal(advance(schedule, 20).phase, "quiet");
 		assert.equal(advance(schedule, 3).phase, "approach");
 	}
@@ -189,11 +251,12 @@ test("exported rig performs continuous handoffs, with one visible customer and o
 	let previousCupRotation;
 	const previousCookie = new Vector3();
 	let maxCupStep = 0;
+	let maxCupAt;
 	let maxCookieStep = 0;
 	let previousPhase = "quiet";
 	let previousRotation;
 	let previousVariant = 0;
-	for (let i = 0; i < 180 * 60; i++) {
+	for (let i = 0; i < 240 * 60; i++) {
 		const state = visits.update(1 / 60, true, true, [], "full");
 		root.updateMatrixWorld(true);
 		const visible = [1, 2].filter(
@@ -221,10 +284,14 @@ test("exported rig performs continuous handoffs, with one visible customer and o
 				cup.quaternion.angleTo(previousCupRotation) < 0.15,
 				"handing over the cup must not spin it",
 			);
-			maxCupStep = Math.max(maxCupStep, cup.position.distanceTo(previousCup));
+			const cupStep = cup.position.distanceTo(previousCup);
+			if (cupStep > maxCupStep) {
+				maxCupStep = cupStep;
+				maxCupAt = `${previousPhase} → ${state.phase} at ${state.time.toFixed(3)}s`;
+			}
 			if (
 				cookie.visible &&
-				["cup", "cookie", "enjoy"].includes(state.phase) &&
+				["prepare", "cup", "cookie", "enjoy"].includes(state.phase) &&
 				previousPhase !== "quiet"
 			) {
 				maxCookieStep = Math.max(
@@ -239,7 +306,7 @@ test("exported rig performs continuous handoffs, with one visible customer and o
 		previousPhase = state.phase;
 		assert.ok(cup.position.toArray().every(Number.isFinite));
 	}
-	assert.ok(maxCupStep < 0.025, `cup jumped ${maxCupStep}m`);
+	assert.ok(maxCupStep < 0.025, `cup jumped ${maxCupStep}m: ${maxCupAt}`);
 	assert.ok(maxCookieStep < 0.025, `cookie jumped ${maxCookieStep}m`);
 });
 
@@ -247,9 +314,12 @@ test("reduced motion is one seated regular with food and an invariant pose on ev
 	for (const tier of ["full", "balanced", "light"]) {
 		const root = rig();
 		const visits = createCustomerVisits(root);
-		for (let i = 0; i < 20 * 60; i++)
+		for (let i = 0; i < 30 * 60; i++)
 			visits.update(1 / 60, true, true, [], tier);
+		assert.equal(visits.state.phase, "prepare");
 		visits.update(0, false, true, [], tier);
+		assert.equal(root.getObjectByName("rig_service_stream").visible, false);
+		assert.equal(root.getObjectByName("rig_barista_travel").rotation.y, 0);
 		const customer = root.getObjectByName("rig_prop_customer_1_travel");
 		assert.ok(customer.visible);
 		assert.equal(
@@ -327,7 +397,7 @@ test("actual cat routes and customer visits coexist for ten minutes, including S
 		}
 	}
 	assert.equal(seen.size, 2);
-	assert.ok(longestVisit < 90, `visit stalled for ${longestVisit}s`);
+	assert.ok(longestVisit < 125, `visit stalled for ${longestVisit}s`);
 	assert.ok(
 		minDistance > 0.35,
 		`cat/customer centers approached to ${minDistance}m`,
