@@ -1,4 +1,4 @@
-import { MathUtils, type Object3D, Vector3 } from "three";
+import { MathUtils, type Mesh, type Object3D, Vector3 } from "three";
 import { createBlink, createFootstep, createLeg, ease } from "./limbMotion.ts";
 
 type Point = readonly [number, number, number];
@@ -70,6 +70,14 @@ function cat(root: Object3D, id: number, route: readonly Point[]) {
 	const tail = bind(root, `${prefix}_tail`);
 	const tailEnd = bind(root, `${prefix}_tail_end`);
 	const haunch = bind(root, `${prefix}_haunch`);
+	const coat = root.getObjectByName(`${prefix}_body_detail`) as
+		| Mesh
+		| undefined;
+	const standingShape = coat?.morphTargetDictionary?.standing;
+	const tailCoat = root.getObjectByName(`${prefix}_tail_detail`) as
+		| Mesh
+		| undefined;
+	const tailSway = tailCoat?.morphTargetDictionary?.sway;
 	const ears = ["left", "right"].map((side) =>
 		bind(root, `${prefix}_ear_${side}`),
 	);
@@ -111,7 +119,8 @@ function cat(root: Object3D, id: number, route: readonly Point[]) {
 	const nextFootfall = new Vector3();
 	const footfalls = legs.map(() => new Vector3());
 	const launchPaws = legs.map(() => new Vector3());
-	let nextPair = 0;
+	const walkOrder = [2, 0, 3, 1]; // hind then fore on each side, four distinct beats
+	let nextStep = 0;
 	let wasAirborne = false;
 	const previousPosition = travel?.position.clone() ?? new Vector3();
 	let node = 0;
@@ -176,25 +185,30 @@ function cat(root: Object3D, id: number, route: readonly Point[]) {
 		velocity.y = 0;
 		// Unfold the seated body above the planted paws as the cat rises.
 		// Travel stays on the support plane so steps and landings remain grounded.
-		const standingLift = 0.04 * posture;
-		body.object.rotation.x = body.rotation.x + 0.95 * posture + 0.13 * stretch;
+		const standingLift = 0.036 * posture;
+		body.object.rotation.x = body.rotation.x + 1.2 * posture + 0.13 * stretch;
+		body.object.rotation.z = body.rotation.z + 0.012 * Math.sin(gait) * moving;
 		body.object.position.y =
 			body.position.y +
 			standingLift +
-			0.006 * Math.sin(gait * 2) * moving -
+			0.002 * Math.sin(gait * 2) * moving -
 			0.022 * compression -
 			0.008 * stretch;
 		body.object.scale.y = 1 + 0.008 * Math.sin(idleTime * 1.7 + id * 2.1);
+		if (coat?.morphTargetInfluences && standingShape !== undefined)
+			coat.morphTargetInfluences[standingShape] = posture;
 		if (haunch) {
 			haunch.object.rotation.x = 0.18 * posture - 0.08 * compression;
 			haunch.object.position.y =
-				haunch.position.y + standingLift - 0.012 * compression;
+				haunch.position.y + 0.07 * posture - 0.018 * compression;
+			haunch.object.position.z = haunch.position.z - 0.025 * posture;
+			haunch.object.scale.x = 1 - 0.12 * posture;
 		}
 		const glance =
 			Math.sin(
 				Math.PI * MathUtils.clamp((((idleTime + id * 3) % 19) - 5) / 5, 0, 1),
 			) ** 2;
-		head.object.rotation.x = head.rotation.x - 0.95 * posture;
+		head.object.rotation.x = head.rotation.x - 1.13 * posture;
 		head.object.rotation.y = MathUtils.damp(
 			head.object.rotation.y,
 			head.rotation.y +
@@ -216,12 +230,16 @@ function cat(root: Object3D, id: number, route: readonly Point[]) {
 		tail.object.rotation.x =
 			tail.rotation.x + 0.55 * smooth((posture - 0.55) / 0.45);
 		tail.object.position.y =
-			tail.position.y + standingLift - 0.012 * compression;
+			tail.position.y + 0.07 * posture - 0.018 * compression;
+		tail.object.position.z = tail.position.z - 0.025 * posture;
 		tail.object.rotation.y =
 			tail.rotation.y + (id === 1 ? 2.8 : -2.8) * posture + 0.06 * glance;
 		if (tailEnd)
 			tailEnd.object.rotation.y =
 				0.12 * glance + 0.045 * Math.sin(gait - 0.6) * moving;
+		if (tailCoat?.morphTargetInfluences && tailSway !== undefined)
+			tailCoat.morphTargetInfluences[tailSway] =
+				(0.12 * glance + 0.045 * Math.sin(gait - 0.6) * moving) / 0.18;
 		ears.forEach((ear, i) => {
 			if (ear)
 				ear.object.rotation.y = (watch ? -0.16 : 0.1 * glance) * (i ? 0.7 : 1);
@@ -231,23 +249,26 @@ function cat(root: Object3D, id: number, route: readonly Point[]) {
 			if (!leg) return;
 			leg.object.position.z =
 				leg.position.z +
-				(i < 2 ? 0.095 : -0.015) * posture +
+				(i < 2 ? 0.025 : -0.02) * posture +
 				(i < 2 ? 0.025 * stretch : 0);
 			leg.object.position.y =
-				leg.position.y - 0.024 * posture - 0.016 * compression;
+				leg.position.y +
+				(i < 2 ? -0.017 : 0.012) * posture -
+				0.016 * compression;
 		});
 		if (!travel) return;
 		travel.object.updateWorldMatrix(true, true);
 		nextFootfall.set(0, 0, 0);
 		if (journey && !journey.hop) {
 			const j = journey;
-			const ahead = j.chasing ? 0.17 : 0.28;
+			const ahead = 0.12;
 			nextFootfall.lerpVectors(
 				j.from,
 				j.to,
 				smooth((j.elapsed + ahead - j.prepare) / j.duration),
 			);
 			nextFootfall.sub(travel.object.position).y = 0;
+			nextFootfall.clampLength(0, j.chasing ? 0.055 : 0.035);
 		}
 		feet.forEach((foot, i) => {
 			const leg = legs[i];
@@ -259,21 +280,20 @@ function cat(root: Object3D, id: number, route: readonly Point[]) {
 			);
 			travel.object.localToWorld(footfalls[i]).add(nextFootfall);
 		});
-		let steppingPair = -1;
+		let steppingFoot = -1;
 		if (!airborne && !feet.some((foot) => foot?.step.swinging)) {
-			for (const pair of [nextPair, 1 - nextPair]) {
+			for (let offset = 0; offset < walkOrder.length; offset++) {
+				const phase = (nextStep + offset) % walkOrder.length;
+				const i = walkOrder[phase];
+				const foot = feet[i];
 				if (
-					feet.some(
-						(foot, i) =>
-							foot &&
-							(i === 0 || i === 3 ? 0 : 1) === pair &&
-							(foot.step.target.distanceTo(footfalls[i]) >
-								(moving > 0 ? 0.055 : 0.015) ||
-								foot.step.rotation.angleTo(travel.object.quaternion) > 0.3),
-					)
+					foot &&
+					(foot.step.target.distanceTo(footfalls[i]) >
+						(moving > 0 ? 0.035 : 0.015) ||
+						foot.step.rotation.angleTo(travel.object.quaternion) > 0.3)
 				) {
-					steppingPair = pair;
-					nextPair = 1 - pair;
+					steppingFoot = i;
+					nextStep = (phase + 1) % walkOrder.length;
 					break;
 				}
 			}
@@ -321,10 +341,10 @@ function cat(root: Object3D, id: number, route: readonly Point[]) {
 					delta,
 					footTarget,
 					travel.object.quaternion,
-					steppingPair === (i === 0 || i === 3 ? 0 : 1),
+					steppingFoot === i || (!!journey?.chasing && steppingFoot === 3 - i),
 					-1,
-					journey?.chasing ? 0.1 : 0.17,
-					0.022,
+					journey?.chasing ? 0.06 : 0.1,
+					journey?.chasing ? 0.02 : 0.012,
 				);
 				footTarget.copy(foot.step.target);
 			}
@@ -364,13 +384,17 @@ function cat(root: Object3D, id: number, route: readonly Point[]) {
 		},
 		reset() {
 			for (const joint of joints) joint?.reset();
+			if (coat?.morphTargetInfluences && standingShape !== undefined)
+				coat.morphTargetInfluences[standingShape] = 0;
+			if (tailCoat?.morphTargetInfluences && tailSway !== undefined)
+				tailCoat.morphTargetInfluences[tailSway] = 0;
 			node = 0;
 			direction = 1;
 			rest = id === 1 ? 7 : 46;
 			journey = null;
 			posture = gait = idleTime = visits = 0;
 			compression = landing = 0;
-			nextPair = 0;
+			nextStep = 0;
 			wasAirborne = false;
 			airborne = false;
 			previousPosition.copy(travel?.position ?? previousPosition);

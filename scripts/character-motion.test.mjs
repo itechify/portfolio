@@ -19,6 +19,13 @@ function characterRig() {
 		if (node.translation) object.position.fromArray(node.translation);
 		if (node.rotation) object.quaternion.fromArray(node.rotation);
 		if (node.scale) object.scale.fromArray(node.scale);
+		const mesh = gltf.meshes?.[node.mesh];
+		if (mesh?.extras?.targetNames) {
+			object.morphTargetDictionary = Object.fromEntries(
+				mesh.extras.targetNames.map((name, i) => [name, i]),
+			);
+			object.morphTargetInfluences = [...mesh.weights];
+		}
 		return object;
 	});
 	gltf.nodes.forEach((node, i) => {
@@ -123,6 +130,36 @@ test("the barista keeps small anchored gestures and restores its pose when motio
 	});
 });
 
+test("the cats export continuous torso and tail coats with reversible deformation", () => {
+	const root = characterRig();
+	const update = createCharacterMotion(root);
+	const coats = [1, 2].flatMap((id) => {
+		assert.equal(
+			root.getObjectByName(`rig_prop_cat_${id}_haunch_detail`),
+			undefined,
+		);
+		assert.equal(
+			root.getObjectByName(`rig_prop_cat_${id}_tail_end_detail`),
+			undefined,
+		);
+		return ["body", "tail"].map((part) => {
+			const coat = root.getObjectByName(`rig_prop_cat_${id}_${part}_detail`);
+			assert.deepEqual(Object.keys(coat.morphTargetDictionary), [
+				part === "body" ? "standing" : "sway",
+			]);
+			assert.deepEqual(coat.morphTargetInfluences, [0]);
+			return coat;
+		});
+	});
+	advance(update, 9.2);
+	assert.ok(
+		coats[0].morphTargetInfluences[0] > 0.99,
+		"standing deforms the coat, not just the joints",
+	);
+	update(0, false);
+	for (const coat of coats) assert.deepEqual(coat.morphTargetInfluences, [0]);
+});
+
 test("opening a Section during walking, hopping, or chasing settles without teleporting", () => {
 	for (const at of [8.5, 26.4, 27, 46, 62, 70, 73, 77]) {
 		const root = characterRig();
@@ -188,6 +225,73 @@ test("a long suspended frame resumes gently", () => {
 		);
 	}
 });
+
+for (const id of [1, 2]) {
+	test(`cat ${id} walks with its shoulders under the neck and a level back`, () => {
+		const root = characterRig();
+		const update = createCharacterMotion(root);
+		const joint = (part) => root.getObjectByName(`rig_prop_cat_${id}_${part}`);
+		const travel = joint("travel");
+		const previous = travel.position.clone();
+		let checked = 0;
+		advance(update, 54, true, () => {
+			const distance = travel.position.distanceTo(previous);
+			previous.copy(travel.position);
+			if (
+				distance < 1e-5 ||
+				Math.abs(travel.position.y - 0.99) > 1e-6 ||
+				joint("body").rotation.x < 0.94
+			)
+				return;
+			root.updateMatrixWorld(true);
+			const neck = travel.worldToLocal(
+				joint("head").getWorldPosition(new Vector3()),
+			);
+			const shoulder = travel.worldToLocal(
+				joint("front_left").getWorldPosition(new Vector3()),
+			);
+			const rear = travel.worldToLocal(
+				joint("haunch").getWorldPosition(new Vector3()),
+			);
+			assert.ok(
+				shoulder.z < neck.z,
+				`front legs are ahead of the neck: ${shoulder.z} / ${neck.z}`,
+			);
+			assert.ok(
+				rear.y > neck.y - 0.025,
+				`hindquarters sag below the neck: ${rear.y} / ${neck.y}`,
+			);
+			checked++;
+		});
+		assert.ok(checked > 30);
+	});
+	test(`cat ${id} staggers paw lifts during its slow walk`, () => {
+		const root = characterRig();
+		const update = createCharacterMotion(root);
+		const travel = root.getObjectByName(`rig_prop_cat_${id}_travel`);
+		const paws = ["front_left", "front_right", "hind_left", "hind_right"].map(
+			(part) => root.getObjectByName(`rig_prop_cat_${id}_${part}_paw`),
+		);
+		const lifted = paws.map(() => false);
+		let time = 0;
+		let lifts = 0;
+		advance(update, id === 1 ? 10 : 49, true, () => {
+			time += 1 / 60;
+			let started = 0;
+			paws.forEach((paw, i) => {
+				const airborne =
+					paw.getWorldPosition(new Vector3()).y - travel.position.y >
+					(i < 2 ? 0.018 : 0.019) + 0.004;
+				if (airborne && !lifted[i]) started++;
+				lifted[i] = airborne;
+			});
+			if (time < (id === 1 ? 7 : 46)) return;
+			assert.ok(started <= 1, `${started} paws lifted together at ${time}s`);
+			lifts += started;
+		});
+		assert.ok(lifts >= 4, "exercise every paw during walking");
+	});
+}
 
 for (const id of [1, 2])
 	for (const fps of [30, 60])
@@ -272,8 +376,8 @@ for (const id of [1, 2])
 					});
 					if (walking && onSurface && previousHeight === travel.position.y)
 						assert.ok(
-							contacts >= 1,
-							`cat ${id} lost all paw contacts at ${elapsed}s`,
+							contacts >= 2,
+							`cat ${id} has only ${contacts} supporting paws at ${elapsed}s`,
 						);
 					previousHeight = travel.position.y;
 				},
@@ -345,6 +449,7 @@ test("reduced motion restores every cat joint and hides the mouse during any act
 				...o.position.toArray(),
 				...o.quaternion.toArray(),
 				...o.scale.toArray(),
+				...(o.morphTargetInfluences ?? []),
 			]);
 		const rest = transforms();
 		const update = createCharacterMotion(root);
@@ -384,6 +489,7 @@ for (const [id, name] of [
 		const travel = root.getObjectByName(`rig_prop_cat_${id}_travel`);
 		const tail = root.getObjectByName(`rig_prop_cat_${id}_tail`);
 		const body = root.getObjectByName(`rig_prop_cat_${id}_body`);
+		const haunchJoint = root.getObjectByName(`rig_prop_cat_${id}_haunch`);
 		// Authored tail centerline landmarks from build.py, relative to its
 		// exported Y-up pivot. Both coats use the same arc, mirrored for Freya.
 		const side = id === 1 ? 1 : -1;
@@ -399,12 +505,12 @@ for (const [id, name] of [
 			root.updateMatrixWorld(true);
 			for (const [x, y, z] of arc) {
 				const point = tail.localToWorld(new Vector3(side * x, y, z));
-				const inBody = body.worldToLocal(point.clone());
-				// The haunch ellipsoid in body-local coordinates, including fur.
+				const inHaunch = haunchJoint.worldToLocal(point.clone());
+				// Measure against the moving haunch, including its narrowed walking pose.
 				const haunch =
-					(inBody.x / (id === 1 ? 0.103 : 0.09)) ** 2 +
-					((inBody.y + 0.021) / 0.069) ** 2 +
-					((inBody.z + 0.013) / 0.082) ** 2;
+					(inHaunch.x / (id === 1 ? 0.103 : 0.09)) ** 2 +
+					(inHaunch.y / 0.069) ** 2 +
+					(inHaunch.z / 0.082) ** 2;
 				assert.ok(haunch > 1, `${name}'s tail passes inside its haunch`);
 				// Check the outward sweep while rising/settling too. The seated
 				// curl need only be behind the cat once it reaches its walking pose.
