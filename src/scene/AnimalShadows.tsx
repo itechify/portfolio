@@ -1,11 +1,20 @@
 import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
-import { DataTexture, type Mesh, type MeshBasicMaterial } from "three";
-import type { createCharacterMotion } from "./characterMotion";
+import {
+	DataTexture,
+	type Mesh,
+	type MeshBasicMaterial,
+	type Vector3,
+} from "three";
 
-type Cats = ReturnType<ReturnType<typeof createCharacterMotion>>;
+type Cats = readonly {
+	readonly position: Vector3 | undefined;
+	readonly shadowHeight: number;
+	readonly shadowOpacity: number;
+	size?: number;
+}[];
 
-/** Two tiny soft contact planes, with no real-time lights or shadow maps. */
+/** Tiny soft contact planes, with no real-time lights or shadow maps. */
 export function AnimalShadows({ cats }: { cats: Cats }) {
 	const meshes = useRef<(Mesh | null)[]>([]);
 	const texture = useMemo(() => {
@@ -33,17 +42,21 @@ export function AnimalShadows({ cats }: { cats: Cats }) {
 			(mesh.material as MeshBasicMaterial).opacity = cat.shadowOpacity;
 		});
 	});
-	return cats.map((_, i) => (
+	return cats.map((cat, i) => (
 		<mesh
-			key={i === 0 ? "Skadi" : "Freya"}
-			name={`prop_cat_contact_shadow_${i + 1}`}
+			key={i === 0 ? "Skadi" : i === 1 ? "Freya" : "customer"}
+			name={
+				i < 2
+					? `prop_cat_contact_shadow_${i + 1}`
+					: "prop_customer_contact_shadow"
+			}
 			ref={(mesh) => {
 				meshes.current[i] = mesh;
 			}}
 			rotation-x={-Math.PI / 2}
 			raycast={() => {}}
 		>
-			<planeGeometry args={[0.36, 0.36]} />
+			<planeGeometry args={[cat.size ?? 0.36, cat.size ?? 0.36]} />
 			<meshBasicMaterial
 				map={texture}
 				transparent

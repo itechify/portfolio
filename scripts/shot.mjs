@@ -31,6 +31,14 @@ await page
 await page.waitForTimeout(2500);
 await page.screenshot({ path: `${out}/street.png` });
 
+if (process.argv.includes("--customers")) {
+	const { reviewCustomers } = await import("./customer-review.mjs");
+	await reviewCustomers(page, out);
+	assert.deepEqual(errors, []);
+	await browser.close();
+	process.exit(0);
+}
+
 if (process.argv.includes("--traffic")) {
 	await page.waitForFunction(async () => {
 		const resource = performance

@@ -11,6 +11,8 @@ import {
 import { stationByHotspot } from "../stations";
 import { AnimalShadows } from "./AnimalShadows";
 import { createCharacterMotion } from "./characterMotion";
+import { createCustomerVisits } from "./customerVisits";
+import type { QualityTier } from "./quality";
 import { createTvIdleAnimation } from "./tvIdleAnimation";
 
 const MODEL_URL = "/models/creamery.glb";
@@ -25,6 +27,7 @@ interface Props {
 	street: boolean;
 	tvActive: boolean;
 	tvHovered: boolean;
+	quality: QualityTier;
 }
 
 /** The GLB built by blender/build.py, with Hotspot and Prop behaviour attached. */
@@ -34,6 +37,7 @@ export function Creamery({
 	street,
 	tvActive,
 	tvHovered,
+	quality,
 }: Props) {
 	const { scene } = useGLTF(MODEL_URL, DRACO_PATH);
 	const maxAnisotropy = useThree((s) => s.gl.capabilities.getMaxAnisotropy());
@@ -60,6 +64,20 @@ export function Creamery({
 			// Clicks on the pavement fall through to the Canvas, so clicking
 			// the ground still returns to Street View as the road does.
 			if (o.name === "street") o.raycast = () => {};
+			// Animated customers and their food must not intercept Hotspots.
+			let prop: Object3D | null = o;
+			while (prop) {
+				if (
+					prop.name.startsWith("rig_prop_customer_") ||
+					prop.name.startsWith("rig_service_")
+				) {
+					o.raycast = () => {};
+					// Per-regular opacity must not fade JJ or the other customer.
+					o.material = (o.material as MeshStandardMaterial).clone();
+					break;
+				}
+				prop = prop.parent;
+			}
 			// Lighting is baked into the textures (ADR 0001), so baked meshes
 			// render unlit. Emissive meshes keep their material for bloom.
 			const std = o.material as MeshStandardMaterial;
@@ -90,6 +108,8 @@ export function Creamery({
 	}, [scene, maxAnisotropy]);
 	const animateCharacters = useMemo(() => createCharacterMotion(root), [root]);
 	const cats = useMemo(() => animateCharacters(0, false), [animateCharacters]);
+	const visits = useMemo(() => createCustomerVisits(root), [root]);
+	const shadows = useMemo(() => [...cats, visits.shadow], [cats, visits]);
 
 	useEffect(() => {
 		if (!motion) return;
@@ -129,7 +149,10 @@ export function Creamery({
 	}, [hovered]);
 
 	useFrame((state, delta) => {
-		if (!document.hidden) animateCharacters(delta, motion, street);
+		if (!document.hidden) {
+			animateCharacters(delta, motion, street);
+			visits.update(delta, motion, street, cats, quality);
+		}
 		if (!document.hidden) tvIdle.current?.update(delta, motion && !tvActive);
 		// The glTF exporter converts Blender's Z-up mesh data to Y-up, so the
 		// cylinder axis the blades were built around is local Y here.
@@ -163,7 +186,7 @@ export function Creamery({
 
 	return (
 		<>
-			<AnimalShadows cats={cats} />
+			<AnimalShadows cats={shadows} />
 			{/* biome-ignore lint/a11y/noStaticElementInteractions: a three.js object, not a DOM element; the Station Menu is the accessible route */}
 			<primitive
 				object={root}

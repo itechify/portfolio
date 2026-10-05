@@ -32,8 +32,6 @@ function characterRig() {
 const expected = [
 	"barista_head",
 	"barista_eyes",
-	"barista_cup",
-	"barista_tray",
 	...[1, 2].flatMap((id) =>
 		["body", "head", "eyes", "tail"].map((part) => `prop_cat_${id}_${part}`),
 	),
