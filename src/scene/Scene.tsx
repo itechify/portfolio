@@ -229,6 +229,7 @@ export function Scene({
 			{/* No scene lights: lighting is baked into the model (ADR 0001). */}
 			<Suspense fallback={null}>
 				<Creamery
+					quality={quality}
 					motion={motion}
 					street={station.id === "street"}
 					tvActive={station.id === "shorts"}

@@ -23,7 +23,8 @@ function blink(time: number, period: number) {
  */
 export function createCharacterMotion(root: Object3D) {
 	const cats = createCatMotion(root);
-	const names = ["barista_head", "barista_eyes", "barista_cup", "barista_tray"];
+	// Customer visits own JJ's arms and serving Props; these are his idle face.
+	const names = ["barista_head", "barista_eyes"];
 	const joints = new Map(
 		names.flatMap((name) => {
 			const object = root.getObjectByName(`rig_${name}`);
@@ -56,9 +57,14 @@ export function createCharacterMotion(root: Object3D) {
 	}
 	let time = 0;
 	let moving = false;
-	return (delta: number, enabled: boolean, street = true) => {
+	return (
+		delta: number,
+		enabled: boolean,
+		street = true,
+		clearSidewalk = false,
+	) => {
 		const step = Math.max(0, Math.min(delta, 0.05));
-		cats.update(step, enabled, street);
+		cats.update(step, enabled, street, clearSidewalk);
 		if (!enabled) {
 			if (moving) {
 				for (const joint of joints.values()) {
@@ -76,8 +82,6 @@ export function createCharacterMotion(root: Object3D) {
 		const serve = gesture(time, 13, 3, 4);
 		const glance = gesture(time, 17, 9, 5);
 		rotate("barista_head", 0.065 * serve, 0.16 * glance - 0.09 * serve);
-		rotate("barista_cup", -0.12 * serve, 0);
-		rotate("barista_tray", -0.035 * gesture(time, 13, 3.5, 4), 0);
 		stretch("barista_eyes", blink(time, 6.7));
 		return cats.cats;
 	};

@@ -846,38 +846,137 @@ def barista(m):
     parent([eyes], head)
 
     for side, suffix in ((-1, "tray"), (1, "cup")):
-        x = -0.9 + side * 0.28
-        # Upper arm stays at the shoulder; the forearm pivots at the elbow.
-        articulation(f"rig_barista_shoulder_{suffix}", (x, -0.55, 1.5), [
-            cyl("barista_shoulder", (x, -0.55, 1.49), 0.095, 0.1, m.steel, axis="X"),
-            box("barista_upper_arm", (x, -0.6, 1.35), (0.11, 0.12, 0.24), m.blue_mid, rot=(-0.3, 0, 0)),
-            cyl("barista_elbow", (x, -0.65, 1.25), 0.065, 0.13, m.purple, axis="X"),
+        robot_arm(m, f"barista_{suffix}", (-0.9 + side * 0.28, -0.55, 1.5),
+                  0.43, 0.43, m.teal_pale)
+    articulation("rig_barista_travel", (-0.9, -0.55, 0), [
+        bpy.data.objects[name] for name in (
+            "rig_barista_body", "rig_barista_head",
+            "rig_barista_cup_upper", "rig_barista_tray_upper")
+    ])
+    serving_props(m)
+
+
+def robot_arm(m, prefix, shoulder, upper_length, lower_length, enamel):
+    """Two down-facing rigid bones and an independently oriented gripper.
+
+    Lengths and grip origins are the contract with customerVisits.ts. The
+    runtime solves their reach without stretching or real-time lighting.
+    """
+    x, y, z = shoulder
+    upper = articulation(f"rig_{prefix}_upper", shoulder, [
+        cyl("robot_shoulder", shoulder, 0.068, 0.105, m.steel_dull, axis="X"),
+        box("robot_upper_arm", (x, y, z - upper_length / 2), (0.075, 0.08, upper_length - 0.055), enamel),
+        box("robot_arm_inset", (x, y - 0.044, z - upper_length / 2), (0.031, 0.012, upper_length * 0.5), m.blue_deep),
+    ])
+    elbow = (x, y, z - upper_length)
+    lower = articulation(f"rig_{prefix}_lower", elbow, [
+        cyl("robot_elbow", elbow, 0.055, 0.10, m.purple, axis="X"),
+        box("robot_forearm", (x, y, elbow[2] - lower_length / 2), (0.08, 0.085, lower_length - 0.035), enamel),
+        box("robot_forearm_inset", (x, y - 0.047, elbow[2] - lower_length / 2), (0.035, 0.01, lower_length * 0.6), m.blue_mid),
+    ])
+    grip = (x, y, elbow[2] - lower_length)
+    parts = [box("robot_palm", (x, y + 0.05, grip[2]), (0.105, 0.045, 0.06), m.purple)]
+    for side in (-1, 1):
+        parts.append(box("robot_finger", (x + side * 0.052, y - 0.002, grip[2]), (0.02, 0.085, 0.065), m.steel_dull))
+    hand = articulation(f"rig_{prefix}_hand", grip, parts)
+    parent([hand], lower)
+    parent([lower], upper)
+    return upper
+
+
+def serving_props(m):
+    """Cup, milk, tray and one transferable cookie, each with an origin."""
+    x, y, z = -0.62, -1.055, 1.31
+    shell = cone("service_cup", (x, y, z), 0.041, 0.052, 0.13, m.cream)
+    # An open vessel: the milk surface can disappear after the sip without
+    # leaving a solid cream-coloured cap over the empty interior.
+    bm = bmesh.new()
+    bm.from_mesh(shell.data)
+    bmesh.ops.delete(bm, geom=[f for f in bm.faces if f.normal.z > 0.9], context="FACES")
+    bm.to_mesh(shell.data)
+    bm.free()
+    cup = articulation("rig_service_cup", (x, y, z), [
+        shell,
+        ring("service_cup_rim", (x, y, z + 0.064), 0.049, 0.007, m.pink),
+        cyl("service_cup_inside", (x, y, z - 0.04), 0.035, 0.006, m.purple),
+        box("service_cup_label", (x, y - 0.048, z), (0.046, 0.008, 0.036), m.pink),
+    ])
+    milk = articulation("rig_service_milk", (x, y, z + 0.059), [
+        cyl("service_milk", (x, y, z + 0.059), 0.043, 0.005, m.white),
+    ])
+    parent([milk], cup)
+    x, y, z = -1.18, -1.04, 1.31
+    tray = articulation("rig_service_tray", (x, y, z), [
+        cyl("service_tray", (x, y, z), 0.13, 0.02, m.steel_dull),
+        cyl("service_tray_inset", (x, y, z + 0.012), 0.112, 0.006, m.pink_pale),
+    ])
+    x += 0.045
+    parts = [cyl("service_cookie", (x, y, z + 0.03), 0.043, 0.024, m.cookie)]
+    for dx, dy in ((-0.014, -0.01), (0.012, 0.015), (0.017, -0.02)):
+        parts.append(ball("service_chip", (x + dx, y + dy, z + 0.044), 0.006, m.choc))
+    cookie = articulation("rig_service_cookie", (x, y, z + 0.03), parts)
+    parent([cookie], tray)
+
+
+def customer(m, number, x):
+    """Original enamel regulars: a teal round head and a pink square head.
+
+    Hip .66, thigh/shin .28/.28, shoulder 1.065; each limb joins at export.
+    """
+    y = -2.28
+    prefix = f"prop_customer_{number}"
+    accent = m.teal_pale if number == 1 else m.pink_pale
+    glow = m.neon_soft if number == 1 else m.neon_pink
+    parts = [
+        box("customer_pelvis", (x, y, 0.66), (0.28, 0.22, 0.13), m.purple),
+        box("customer_torso", (x, y, 0.9), (0.31, 0.24, 0.37), m.blue_deep),
+        box("customer_chest", (x, y - 0.129, 0.94), (0.265, 0.035, 0.22), accent),
+        box("customer_back_panel", (x, y + 0.129, 0.94), (0.23, 0.025, 0.24), accent),
+        box("customer_chest_inset", (x, y - 0.152, 0.97), (0.14, 0.012, 0.08), m.purple),
+        cyl("customer_neck", (x, y, 1.115), 0.06, 0.09, m.steel_dull),
+    ]
+    for offset in (-0.06, 0, 0.06):
+        parts.append(box("customer_back_vent", (x, y + 0.147, 0.94 + offset), (0.14, 0.012, 0.012), m.blue_deep))
+    body = articulation(f"rig_{prefix}_body", (x, y, 0.66), parts)
+    head_parts = [
+        (blob("customer_round_head", (x, y, 1.28), (0.18, 0.145, 0.17), accent)
+         if number == 1 else box("customer_square_head", (x, y, 1.28), (0.32, 0.27, 0.29), accent)),
+        box("customer_visor", (x, y - 0.139, 1.3), (0.265, 0.035, 0.12), m.ink),
+        box("customer_mouth", (x, y - 0.141, 1.205), (0.09, 0.018, 0.025), m.ink),
+        cyl("customer_antenna", (x + (0.0 if number == 1 else 0.1), y, 1.48), 0.009, 0.09, m.steel_dull),
+        ball("customer_antenna_tip", (x + (0.0 if number == 1 else 0.1), y, 1.535), 0.019, glow, subdiv=2),
+    ]
+    for side in (-1, 1):
+        head_parts.append(cyl("customer_ear", (x + side * 0.175, y, 1.28), 0.056, 0.035, m.steel_dull, axis="X"))
+    head = articulation(f"rig_{prefix}_head", (x, y, 1.12), head_parts)
+    eyes = articulation(f"rig_{prefix}_eyes", (x, y - 0.161, 1.31), [
+        box("customer_eye", (x + side * 0.054, y - 0.161, 1.31), (0.03, 0.008, 0.044 if number == 1 else 0.025), glow)
+        for side in (-1, 1)
+    ])
+    parent([eyes], head)
+    arms = [robot_arm(m, f"{prefix}_{side}", (x + sign * 0.205, y, 1.065), 0.32, 0.32, accent)
+            for side, sign in (("left", -1), ("right", 1))]
+    parent([head, *arms], body)
+    legs = []
+    for side, sign in (("left", -1), ("right", 1)):
+        lx = x + sign * 0.087
+        thigh = articulation(f"rig_{prefix}_{side}_thigh", (lx, y, 0.66), [
+            cyl("customer_hip", (lx, y, 0.66), 0.055, 0.075, m.steel_dull, axis="X"),
+            box("customer_thigh", (lx, y, 0.52), (0.09, 0.105, 0.23), accent),
         ])
-        parts = [
-            box("barista_forearm", (x, -0.8, 1.25), (0.1, 0.28, 0.1), m.teal_pale),
-            box("barista_forearm_inset", (x, -0.8, 1.305), (0.05, 0.16, 0.012), m.blue_deep),
-            cyl("barista_wrist", (x, -0.96, 1.25), 0.039, 0.065, m.steel, axis="Y"),
-            box("barista_palm", (x, -1.005, 1.25), (0.11, 0.05, 0.065), m.purple),
-        ]
-        for grip in (-1, 1):
-            parts.append(box("barista_gripper", (x + grip * 0.052, -1.043, 1.275), (0.023, 0.07, 0.08), m.steel))
-        if suffix == "cup":
-            parts.extend([
-                cone("barista_cup", (x, -1.055, 1.31), 0.041, 0.052, 0.13, m.cream),
-                cyl("barista_cup_rim", (x, -1.055, 1.377), 0.056, 0.012, m.pink),
-                cyl("barista_milk", (x, -1.055, 1.38), 0.043, 0.006, m.white),
-                box("barista_cup_label", (x, -1.103, 1.32), (0.046, 0.008, 0.036), m.pink),
-            ])
-        else:
-            parts.extend([
-                cyl("barista_tray", (x, -1.04, 1.3), 0.13, 0.02, m.steel),
-                cyl("barista_tray_inset", (x, -1.04, 1.313), 0.112, 0.01, m.pink_pale),
-            ])
-            for i in range(2):
-                parts.append(cyl("barista_cookie", (x + (i - 0.5) * 0.09, -1.04, 1.33), 0.043, 0.024, m.cookie))
-                for dx, dy in ((-0.014, -0.01), (0.012, 0.015), (0.017, -0.02)):
-                    parts.append(ball("barista_choc_chip", (x + (i - 0.5) * 0.09 + dx, -1.04 + dy, 1.344), 0.006, m.choc))
-        articulation(f"rig_barista_{suffix}", (x, -0.65, 1.25), parts)
+        shin = articulation(f"rig_{prefix}_{side}_shin", (lx, y, 0.38), [
+            cyl("customer_knee", (lx, y, 0.38), 0.052, 0.10, m.purple, axis="X"),
+            box("customer_shin", (lx, y, 0.24), (0.08, 0.09, 0.22), m.blue_mid),
+        ])
+        foot = articulation(f"rig_{prefix}_{side}_foot", (lx, y, 0.10), [
+            box("customer_boot", (lx, y - 0.024, 0.06), (0.115, 0.16, 0.115), m.purple),
+            box("customer_boot_toe", (lx, y - 0.07, 0.067), (0.105, 0.065, 0.06), accent),
+            box("customer_sole", (lx, y - 0.024, 0.013), (0.12, 0.16, 0.025), m.ink),
+        ])
+        parent([foot], shin)
+        parent([shin], thigh)
+        legs.append(thigh)
+    articulation(f"rig_{prefix}_travel", (x, y, 0), [body, *legs])
 
 
 def counter_interior(m):
@@ -906,10 +1005,13 @@ def counter_interior(m):
         cyl(f"cup_{i}_straw", (x + 0.012, -1.16, 1.14), 0.004, 0.1, m.teal_pale)
     cyl("plate", (-0.66, -1.25, 1.0), 0.14, 0.015, m.white)
     ring("plate_rim", (-0.66, -1.25, 1.009), 0.129, 0.009, m.pink_pale)
-    for i in range(3):
-        cyl(f"plate_cookie_{i}", (-0.71 + i * 0.07, -1.25, 1.02 + i * 0.02), 0.06, 0.02, m.cookie, verts=16)
-        for dx, dy in ((-0.025, 0), (0.014, -0.023), (0.025, 0.025)):
-            blob(f"plate_chip_{i}", (-0.71 + i * 0.07 + dx, -1.25 + dy, 1.032 + i * 0.02), (0.009, 0.007, 0.004), m.choc, detail=4)
+    # Three cookies rest directly on the plate, with room between them and
+    # the rim. Raising later cookies while offsetting them left unsupported
+    # overhangs that read as floating, interpenetrating disks.
+    for i, (x, y) in enumerate(((-0.715, -1.278), (-0.605, -1.278), (-0.66, -1.193))):
+        cyl(f"plate_cookie_{i}", (x, y, 1.019), 0.045, 0.018, m.cookie, verts=24)
+        for dx, dy in ((-0.018, 0), (0.01, -0.018), (0.017, 0.017)):
+            blob(f"plate_chip_{i}", (x + dx, y + dy, 1.031), (0.007, 0.006, 0.004), m.choc, detail=4)
     box("napkins", (-1.4, -1.16, 1.03), (0.12, 0.1, 0.08), m.teal_pale)
     box("napkin_slot", (-1.4, -1.16, 1.073), (0.085, 0.018, 0.008), m.ink)
     box("napkin_fold", (-1.4, -1.16, 1.09), (0.07, 0.008, 0.055), m.white, rot=(0.18, 0, 0))
@@ -940,6 +1042,17 @@ def counter_interior(m):
         cyl(f"bottle_{i}_neck", (x, 0.17, 1.72), 0.015, 0.06, m.pink, verts=10)
     for i in range(5):
         box(f"shelf2_box_{i}", (-2.2 + i * 0.3, 0.17, 1.2), (0.2, 0.16, 0.16), (m.pink, m.teal, m.cream)[i % 3])
+    # Dedicated milk tap and cookie pickup ledge behind JJ. Runtime coordinates
+    # are (x, height, -y); the cup docks directly beneath this nozzle.
+    box("prep_ledge", (-1.45, -0.12, 1.085), (1.25, 0.5, 0.05), m.blue_mid)
+    box("milk_dispenser", (-1.85, 0.02, 1.51), (0.28, 0.24, 0.46), m.teal_pale)
+    box("milk_dispenser_label", (-1.85, -0.105, 1.56), (0.23, 0.012, 0.16), m.purple)
+    text("milk_dispenser_text", "MILK", 0.052, m.white, (-1.85, -0.115, 1.56), extrude=0.001)
+    cyl("milk_tap_pipe", (-1.85, -0.20, 1.39), 0.023, 0.20, m.steel, axis="Y")
+    cyl("milk_tap_nozzle", (-1.85, -0.30, 1.365), 0.025, 0.065, m.steel)
+    articulation("rig_service_stream", (-1.85, -0.30, 1.286), [
+        cyl("service_milk_stream", (-1.85, -0.30, 1.286), 0.009, 0.097, m.white)
+    ])
     # soft-serve machine at the right end of the back counter
     box("softserve_body", (-0.45, -0.05, 1.3), (0.5, 0.45, 0.7), m.white)
     box("softserve_panel", (-0.45, -0.29, 1.45), (0.4, 0.01, 0.2), m.pink)
@@ -1401,6 +1514,7 @@ def lights_and_cameras(scene):
     cams = {}
     for name, loc, look, lens in (
         ("street", (0, -16, 4.6), (0, 0, 3.0), 45),
+        ("customers", (-4.3, -4.9, 1.9), (-3.3, -2.28, 0.85), 55),
         ("counter", (-1.0, -6.5, 1.9), (-1.2, 0, 1.3), 50),
         ("sign", (-0.9, -6.5, 3.3), (-0.9, 0, 3.4), 45),
         ("upper", (0.5, -7.5, 5.4), (0.5, 0, 5.3), 40),
@@ -1431,6 +1545,8 @@ def build():
     rooftop(m)
     kiosk(m)
     machine(m)
+    customer(m, 1, -3.0)
+    customer(m, 2, -3.65)
     cams = lights_and_cameras(scene)
     return scene, cams
 
@@ -1541,10 +1657,13 @@ def regroup():
     fans = [o for o in mesh_objects() if o.name.startswith("prop_fan_")]
     if fans:
         groups.append(("fans", fans, 256))
-    characters, animals = [], []
+    characters, animals, customers = [], [], []
     for joint, d in per_joint.items():
         if d["detail"]:
-            target = animals if joint.startswith(("rig_prop_cat_", "rig_prop_mouse")) else characters
+            if joint.startswith(("rig_prop_customer_", "rig_service_", "rig_barista_")):
+                target = customers
+            else:
+                target = animals if joint.startswith(("rig_prop_cat_", "rig_prop_mouse")) else characters
             target.append(join(d["detail"], f"{joint}_detail"))
         for key, objs in d["glow"].items():
             join(objs, f"{joint}_glow_{key}")
@@ -1552,6 +1671,8 @@ def regroup():
         groups.append(("characters", characters, 1024))
     if animals:
         groups.append(("animals", animals, 1024))
+    if customers:
+        groups.append(("customers", customers, 1024))
     return groups
 
 
@@ -1581,7 +1702,7 @@ def bake_group(scene, name, objs, size, samples):
     added = []
     portable = []
     for mt in mats:
-        if name in ("animals", "car_paint", "car_detail"):
+        if name in ("animals", "customers", "car_paint", "car_detail"):
             # Interior surfaces hidden by a seated limb must not bake black:
             # walking exposes them. Bake coat colour with gentle broad shading
             # instead of positional lights or occlusion from other joints.
@@ -1622,7 +1743,7 @@ def bake_group(scene, name, objs, size, samples):
     scene.cycles.samples = samples
     scene.render.bake.margin = 8
     scene.render.bake.use_clear = True
-    bpy.ops.object.bake(type="EMIT" if name in ("animals", "car_paint", "car_detail") else "COMBINED")
+    bpy.ops.object.bake(type="EMIT" if name in ("animals", "customers", "car_paint", "car_detail") else "COMBINED")
     for mt, node in added:
         mt.node_tree.nodes.remove(node)
     for mt, output, original, nodes in portable:
@@ -1670,18 +1791,21 @@ def bake_all(scene, groups, samples):
     scene.render.engine = "CYCLES"
     scene.cycles.device = "GPU"
     atlases = []
-    animals = next(objs for name, objs, size in groups if name == "animals")
-    # No cat-shaped shadows left on empty counter tops after the cats move.
-    for animal in animals:
-        animal.hide_render = True
+    moving = [(name, objs, size) for name, objs, size in groups if name in ("animals", "customers")]
+    # Moving characters and serving Props leave no permanent baked shadows.
+    hidden = [o for o in mesh_objects() if o.parent and o.parent.name.startswith(
+        ("rig_prop_cat_", "rig_prop_mouse", "rig_prop_customer_", "rig_service_", "rig_barista_"))]
+    for o in hidden:
+        o.hide_render = True
     for name, objs, size in groups:
-        if name == "animals":
+        if name in ("animals", "customers"):
             continue
         full = name.startswith("building")
         atlases.append((name, objs, bake_group(scene, name, objs, size, samples if full else max(128, samples // 2))))
-    for animal in animals:
-        animal.hide_render = False
-    atlases.append(("animals", animals, bake_group(scene, "animals", animals, 1024, 128)))
+    for o in hidden:
+        o.hide_render = False
+    for name, objs, size in moving:
+        atlases.append((name, objs, bake_group(scene, name, objs, size, 128)))
     for name, objs, img in atlases:
         use_atlas(name, objs, img)
 

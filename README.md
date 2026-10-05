@@ -19,12 +19,34 @@ pnpm check          # typecheck and lint
 node --test scripts/traffic.test.mjs # traffic, exported car, Quality Tiers
 node scripts/shot.mjs http://localhost:5173 # Street View and Station screenshots
 node scripts/shot.mjs http://localhost:5173 --traffic # traffic and Quality Tier review
+node --test scripts/customer-visits.test.mjs # service, cat coexistence, exported rigs
+node scripts/shot.mjs http://localhost:5173 --customers # service poses and phone review
 ```
 
 The build also exports `public/models/traffic-car.glb`, with portable baked shading
 and independent wheel pivots. Traffic loads after Entry when motion is enabled;
 one car crosses Street View at a time, with 20–40 seconds of quiet between trips.
 New trips wait while a Section is open. No audio or real-time lights are added.
+
+Two robot regulars take turns visiting JJ at the middle counter stool. After
+Entry, the first arrives in about five seconds; a visit takes about 95 seconds,
+plus any pauses to yield to the cats, followed by a 15–30-second quiet gap.
+They pause briefly between gestures and spend 16 seconds enjoying their food.
+After taking the order, JJ turns to the back counter, collects the cookie tray,
+and fills a cup under the milk tap before serving. He puts the empty cup and
+tray away afterward and waits empty-handed between visits.
+Customers greet JJ, receive milk and a cookie, eat and drink, return the cup, and
+leave to the left. Customers wait offscreen or at their stool until cats clear
+the shared sidewalk, then walk facing their direction of travel. A cat already
+on the route continues to the clear space on the right; cats on stools wait
+until the customer's walk finishes. Opening another Station lets the current
+visit finish and stops new arrivals. Reduced motion shows one still seated customer with food.
+Light keeps the whole visit while omitting secondary gestures and the customer
+contact shadow. The robots and detachable serving Props are built in Blender
+with portable baked shading; `customerVisits.ts` coordinates their rigid joints.
+
+`blender -b --python-exit-code 1 --python blender/check_counter.py` checks that
+the three counter cookies rest flat inside the plate rim without overlapping.
 
 The cog button in Street View opens Quality Tier options: Auto, Full, Balanced,
 and Light. Use arrow keys to select an option, or Escape to close the panel.
