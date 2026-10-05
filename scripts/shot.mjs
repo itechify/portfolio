@@ -27,6 +27,82 @@ await page
 await page.waitForTimeout(2500);
 await page.screenshot({ path: `${out}/street.png` });
 
+if (process.argv.includes("--cats")) {
+	// Deterministic pose review through the same public controller as the app.
+	// Keep this dev-only inspection here, out of the shipped visitor experience.
+	await page.evaluate(async () => {
+		const resource = performance
+			.getEntriesByType("resource")
+			.find(
+				(r) =>
+					r.name.includes("/@react-three_fiber") ||
+					r.name.includes("/deps/@react-three_fiber"),
+			);
+		const { _roots } = await import(resource.name);
+		const state = _roots.get(document.querySelector("canvas")).store.getState();
+		state.setFrameloop("never");
+		const { createCharacterMotion } = await import(
+			"/src/scene/characterMotion.ts"
+		);
+		window.catReview = {
+			state,
+			update: createCharacterMotion(state.scene),
+			time: 0,
+		};
+	});
+	for (const seconds of [0, 8.6, 25.1, 45.5, 73.5, 77, 102.9, 106]) {
+		const positions = await page.evaluate((seconds) => {
+			const { state, update } = window.catReview;
+			let cats = update(0, true, true);
+			while (window.catReview.time < seconds) {
+				cats = update(1 / 60, true, true);
+				window.catReview.time += 1 / 60;
+			}
+			cats.forEach((cat, i) => {
+				const shadow = state.scene.getObjectByName(
+					`prop_cat_contact_shadow_${i + 1}`,
+				);
+				shadow.position.set(
+					cat.position.x,
+					cat.shadowHeight + 0.003,
+					cat.position.z,
+				);
+				shadow.material.opacity = cat.shadowOpacity;
+			});
+			const p = cats[seconds >= 100 ? 1 : 0].position;
+			state.camera.position.set(p.x - 0.8, p.y + 0.65, p.z + 1.3);
+			state.camera.lookAt(p.x, p.y + 0.13, p.z);
+			state.camera.updateMatrixWorld();
+			for (const subscriber of state.internal.subscribers) {
+				if (subscriber.priority > 0) subscriber.ref.current(state, 0);
+			}
+			return cats.map((cat) => cat.position.toArray());
+		}, seconds);
+		await page.screenshot({ path: `${out}/cats-${seconds}.png` });
+		console.log("Cat pose", seconds, positions);
+	}
+	for (const [label, width, height] of [
+		["street", 1280, 800],
+		["phone", 390, 844],
+	]) {
+		await page.setViewportSize({ width, height });
+		await page.waitForTimeout(500);
+		await page.evaluate(() => {
+			const { state } = window.catReview;
+			state.camera.position.set(0, 4.2, 14);
+			state.camera.lookAt(0, 3, 0);
+			state.camera.updateMatrixWorld();
+			for (const subscriber of state.internal.subscribers) {
+				if (subscriber.priority > 0) subscriber.ref.current(state, 0);
+			}
+		});
+		await page.screenshot({ path: `${out}/cats-${label}.png` });
+	}
+	assert.deepEqual(errors, []);
+	await browser.close();
+	process.exit(0);
+}
+
 if (process.argv.includes("--tv-idle")) {
 	// Interior of the TV in the fixed 1280 × 800 Street View: exclude the
 	// glowing bezel, fans and characters so only the climber changes pixels.

@@ -17,9 +17,9 @@ export const SECTIONS: readonly SectionDef[] = [
 		body: (
 			<>
 				<p>
-					Hi, I'm Jeffrey (JJ) Davis, a software engineer at Moebius Solutions. 
-					I build web apps, games, and AI-powered projects. 
-					Check them out in the projects section!
+					Hi, I'm Jeffrey (JJ) Davis, a software engineer at Moebius Solutions.
+					I build web apps, games, and AI-powered projects. Check them out in
+					the projects section!
 				</p>
 			</>
 		),
@@ -62,7 +62,9 @@ export const SECTIONS: readonly SectionDef[] = [
 					<a href="https://github.com/itechify">GitHub</a>
 				</li>
 				<li>
-					<a href="https://www.linkedin.com/in/jeffrey-davis-9b0656187/">LinkedIn</a>
+					<a href="https://www.linkedin.com/in/jeffrey-davis-9b0656187/">
+						LinkedIn
+					</a>
 				</li>
 			</ul>
 		),

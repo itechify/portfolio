@@ -586,7 +586,8 @@ def cat(name, base, identity, turn=0.0, tail_side=1):
     the existing character atlas. The numbered pivots are the web animation
     contract; identity changes the likeness without changing those joints.
     Photos are visual references only and are not needed to rebuild."""
-    spin = Matrix.Rotation(turn, 3, "Z")
+    # Model in forward-facing local axes; the travel pivot supplies heading.
+    spin = Matrix.Identity(3)
     fluffy = identity == "Skadi"
     # Reserve headroom for the strong counter lights in the Standard bake.
     white = srgb("bab7b0")
@@ -617,7 +618,7 @@ def cat(name, base, identity, turn=0.0, tail_side=1):
         return obj
 
     def ellipsoid(part, center, radii, color, pattern=None, detail=12):
-        obj = blob(f"{name}_{part}", at(*center), radii, fur, turn, detail=detail)
+        obj = blob(f"{name}_{part}", at(*center), radii, fur, detail=detail)
         return paint(obj, lambda p: pattern(*(p[i] / radii[i] for i in range(3))) if pattern else color)
 
     def tabby(x, y, z):
@@ -648,14 +649,20 @@ def cat(name, base, identity, turn=0.0, tail_side=1):
         ellipsoid("body", (0, 0.012, 0.133), (0.081 if fluffy else 0.067, 0.067, 0.105), coat, body_coat, 20),
         ellipsoid("bib", (0, -0.045, 0.135), (0.062 if fluffy else 0.049, 0.037, 0.087), white),
     ]
+    legs = []
     for side in (-1, 1):
-        body_parts.extend([
+        front_parts = [
             ellipsoid(f"leg_{side}", (side * 0.032, -0.041, 0.069), (0.024, 0.027, 0.061), white),
             ellipsoid(f"paw_{side}", (side * 0.034, -0.059, 0.018), (0.029, 0.037, 0.018), white),
-            ellipsoid(f"hind_paw_{side}", (side * 0.074, 0.014, 0.019), (0.027, 0.04, 0.019), white),
-        ])
+        ]
         if fluffy:
-            body_parts.append(ellipsoid(f"sleeve_{side}", (side * 0.039, -0.035, 0.109), (0.029, 0.029, 0.035), coat, tabby))
+            front_parts.append(ellipsoid(f"sleeve_{side}", (side * 0.039, -0.035, 0.109), (0.029, 0.029, 0.035), coat, tabby))
+        suffix = "left" if side == -1 else "right"
+        legs.append(articulation(f"rig_{name}_front_{suffix}", at(side * 0.032, -0.041, 0.12), front_parts))
+        legs.append(articulation(f"rig_{name}_hind_{suffix}", at(side * 0.065, 0.038, 0.105), [
+            ellipsoid(f"hind_leg_{side}", (side * 0.065, 0.038, 0.062), (0.027, 0.032, 0.044), coat, tabby),
+            ellipsoid(f"hind_paw_{side}", (side * 0.065, 0.014, 0.019), (0.027, 0.04, 0.019), white),
+        ]))
     if fluffy:
         # One continuous mane, with a gently uneven silhouette. Keeping the
         # tufts in the surface avoids bead-like pieces and extra UV islands.
@@ -668,7 +675,7 @@ def cat(name, base, identity, turn=0.0, tail_side=1):
             v.co.y *= ripple
             v.co.z -= 0.008 * lower * (0.5 + 0.5 * math.cos(angle * 9))
         body_parts.append(ruff)
-    body = articulation(f"rig_{name}_body", base, body_parts)
+    body = articulation(f"rig_{name}_body", at(0, 0.02, 0.09), body_parts)
     body["cat_name"] = identity
 
     head_parts = [ellipsoid("head", (0, -0.018, 0.241), (0.072 if fluffy else 0.065, 0.058, 0.06), coat, face_coat, 28)]
@@ -716,7 +723,7 @@ def cat(name, base, identity, turn=0.0, tail_side=1):
     tail["organic"] = True
     paint(tail, tail_coat)
     tail_tip = ellipsoid("tail_tip", (s * 0.028, -0.105, 0.025), (0.027 if fluffy else 0.013,) * 3, stripe)
-    articulation(f"rig_{name}_tail", at(s * 0.048, 0.082, 0.05), [tail, tail_tip])
+    tail_pivot = articulation(f"rig_{name}_tail", at(s * 0.048, 0.082, 0.05), [tail, tail_tip])
     eyes = []
     for side in (-1, 1):
         x = side * 0.029
@@ -729,6 +736,25 @@ def cat(name, base, identity, turn=0.0, tail_side=1):
     eyelids = articulation(f"rig_{name}_eyes", at(0, -0.078, 0.249), eyes)
     parent([eyelids], head)
     parent([head], body)
+    travel = articulation(f"rig_{name}_travel", base, [body, tail_pivot, *legs])
+    travel.rotation_euler.z = turn
+
+
+def mouse(m):
+    """An original, small sidewalk Prop; hidden by the web between chases."""
+    x, y, z = -2.45, -1.72, 0.0
+    parts = [
+        blob("mouse_body", (x, y, z + 0.038), (0.033, 0.064, 0.034), m.steel),
+        blob("mouse_head", (x, y - 0.058, z + 0.035), (0.025, 0.035, 0.024), m.steel),
+        ball("mouse_nose", (x, y - 0.089, z + 0.032), 0.008, m.pink),
+        tube("mouse_tail", [(x, y + 0.052, z + 0.02), (x + 0.018, y + 0.095, z + 0.013), (x - 0.012, y + 0.14, z + 0.01)], 0.005, m.pink),
+    ]
+    for side in (-1, 1):
+        parts.extend([
+            blob("mouse_ear", (x + side * 0.023, y - 0.036, z + 0.063), (0.017, 0.009, 0.019), m.pink_pale),
+            ball("mouse_eye", (x + side * 0.019, y - 0.074, z + 0.042), 0.0045, m.ink),
+        ])
+    articulation("rig_prop_mouse", (x, y, z), parts)
 
 
 def barista(m):
@@ -825,14 +851,15 @@ def counter_interior(m):
         cyl(f"stool_{i}_seat_rim", (x, -1.9, 0.505), 0.19, 0.015, m.purple)
     # Things on the counter: cups, a napkin box, a cookie plate, two cats
     for i, x in enumerate((-2.3, -1.12, -0.98)):
-        cyl(f"cup_{i}", (x, -1.3, 1.03), 0.045, 0.09, m.white)
-        cyl(f"cup_{i}_lid", (x, -1.3, 1.08), 0.05, 0.015, m.pink)
-    cyl("plate", (-0.55, -1.3, 1.0), 0.14, 0.015, m.white)
+        cyl(f"cup_{i}", (x, -1.16, 1.03), 0.045, 0.09, m.white)
+        cyl(f"cup_{i}_lid", (x, -1.16, 1.08), 0.05, 0.015, m.pink)
+    cyl("plate", (-0.66, -1.25, 1.0), 0.14, 0.015, m.white)
     for i in range(3):
-        cyl(f"plate_cookie_{i}", (-0.6 + i * 0.07, -1.3, 1.02 + i * 0.02), 0.06, 0.02, m.cookie, verts=16)
-    box("napkins", (-1.4, -1.25, 1.03), (0.12, 0.1, 0.08), m.teal_pale)
+        cyl(f"plate_cookie_{i}", (-0.71 + i * 0.07, -1.25, 1.02 + i * 0.02), 0.06, 0.02, m.cookie, verts=16)
+    box("napkins", (-1.4, -1.16, 1.03), (0.12, 0.1, 0.08), m.teal_pale)
     cat("prop_cat_1", (-1.85, -1.27, 0.99), "Skadi", turn=math.radians(25))
     cat("prop_cat_2", (-0.13, -1.27, 0.99), "Freya", turn=math.radians(-20), tail_side=-1)
+    mouse(m)
 
     # Back wall: menu board, shelves, soft-serve machine
     board = box("menu_board", (-1.5, 0.27, 1.95), (1.5, 0.03, 0.5), m.screen)
@@ -1389,14 +1416,17 @@ def regroup():
     fans = [o for o in mesh_objects() if o.name.startswith("prop_fan_")]
     if fans:
         groups.append(("fans", fans, 256))
-    characters = []
+    characters, animals = [], []
     for joint, d in per_joint.items():
         if d["detail"]:
-            characters.append(join(d["detail"], f"{joint}_detail"))
+            target = animals if joint.startswith(("rig_prop_cat_", "rig_prop_mouse")) else characters
+            target.append(join(d["detail"], f"{joint}_detail"))
         for key, objs in d["glow"].items():
             join(objs, f"{joint}_glow_{key}")
     if characters:
         groups.append(("characters", characters, 1024))
+    if animals:
+        groups.append(("animals", animals, 1024))
     return groups
 
 
@@ -1424,7 +1454,38 @@ def bake_group(scene, name, objs, size, samples):
     img = bpy.data.images.new(f"bake_{name}", size, size, alpha=False)
     mats = {s.material for o in objs for s in o.material_slots if s.material}
     added = []
+    portable = []
     for mt in mats:
+        if name == "animals":
+            # Interior surfaces hidden by a seated limb must not bake black:
+            # walking exposes them. Bake coat colour with gentle broad shading
+            # instead of positional lights or occlusion from other joints.
+            nodes, links = mt.node_tree.nodes, mt.node_tree.links
+            output = next(n for n in nodes if n.type == "OUTPUT_MATERIAL")
+            original = output.inputs["Surface"].links[0].from_socket
+            base = nodes.get("Principled BSDF").inputs["Base Color"]
+            geometry = nodes.new("ShaderNodeNewGeometry")
+            dot = nodes.new("ShaderNodeVectorMath")
+            dot.operation = "DOT_PRODUCT"
+            dot.inputs[1].default_value = Vector((0.25, -0.45, 0.85)).normalized()
+            links.new(geometry.outputs["Normal"], dot.inputs[0])
+            shade = nodes.new("ShaderNodeMath")
+            shade.operation = "MULTIPLY_ADD"
+            shade.inputs[1].default_value = 0.18
+            shade.inputs[2].default_value = 0.88
+            links.new(dot.outputs["Value"], shade.inputs[0])
+            color = nodes.new("ShaderNodeMixRGB")
+            color.blend_type = "MULTIPLY"
+            color.inputs[0].default_value = 1
+            if base.is_linked:
+                links.new(base.links[0].from_socket, color.inputs[1])
+            else:
+                color.inputs[1].default_value = base.default_value
+            links.new(shade.outputs[0], color.inputs[2])
+            emission = nodes.new("ShaderNodeEmission")
+            links.new(color.outputs[0], emission.inputs["Color"])
+            links.new(emission.outputs[0], output.inputs["Surface"])
+            portable.append((mt, output, original, [geometry, dot, shade, color, emission]))
         node = mt.node_tree.nodes.new("ShaderNodeTexImage")
         node.image = img
         mt.node_tree.nodes.active = node
@@ -1436,9 +1497,13 @@ def bake_group(scene, name, objs, size, samples):
     scene.cycles.samples = samples
     scene.render.bake.margin = 8
     scene.render.bake.use_clear = True
-    bpy.ops.object.bake(type="COMBINED")
+    bpy.ops.object.bake(type="EMIT" if name == "animals" else "COMBINED")
     for mt, node in added:
         mt.node_tree.nodes.remove(node)
+    for mt, output, original, nodes in portable:
+        mt.node_tree.links.new(original, output.inputs["Surface"])
+        for node in nodes:
+            mt.node_tree.nodes.remove(node)
     os.makedirs(BAKE_DIR, exist_ok=True)
     img.filepath_raw = os.path.join(BAKE_DIR, f"{name}.png")
     img.file_format = "PNG"
@@ -1480,9 +1545,18 @@ def bake_all(scene, groups, samples):
     scene.render.engine = "CYCLES"
     scene.cycles.device = "GPU"
     atlases = []
+    animals = next(objs for name, objs, size in groups if name == "animals")
+    # No cat-shaped shadows left on empty counter tops after the cats move.
+    for animal in animals:
+        animal.hide_render = True
     for name, objs, size in groups:
+        if name == "animals":
+            continue
         full = name.startswith("building")
         atlases.append((name, objs, bake_group(scene, name, objs, size, samples if full else max(128, samples // 2))))
+    for animal in animals:
+        animal.hide_render = False
+    atlases.append(("animals", animals, bake_group(scene, "animals", animals, 1024, 128)))
     for name, objs, img in atlases:
         use_atlas(name, objs, img)
 

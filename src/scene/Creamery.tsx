@@ -9,6 +9,7 @@ import {
 	TextureLoader,
 } from "three";
 import { stationByHotspot } from "../stations";
+import { AnimalShadows } from "./AnimalShadows";
 import { createCharacterMotion } from "./characterMotion";
 import { createTvIdleAnimation } from "./tvIdleAnimation";
 
@@ -21,12 +22,19 @@ const hasEmission = (m: MeshStandardMaterial) =>
 interface Props {
 	onHotspot: (name: string) => void;
 	motion: boolean;
+	street: boolean;
 	tvActive: boolean;
 	tvHovered: boolean;
 }
 
 /** The GLB built by blender/build.py, with Hotspot and Prop behaviour attached. */
-export function Creamery({ onHotspot, motion, tvActive, tvHovered }: Props) {
+export function Creamery({
+	onHotspot,
+	motion,
+	street,
+	tvActive,
+	tvHovered,
+}: Props) {
 	const { scene } = useGLTF(MODEL_URL, DRACO_PATH);
 	const maxAnisotropy = useThree((s) => s.gl.capabilities.getMaxAnisotropy());
 	const [hovered, setHovered] = useState<string | null>(null);
@@ -81,6 +89,7 @@ export function Creamery({ onHotspot, motion, tvActive, tvHovered }: Props) {
 		return scene;
 	}, [scene, maxAnisotropy]);
 	const animateCharacters = useMemo(() => createCharacterMotion(root), [root]);
+	const cats = useMemo(() => animateCharacters(0, false), [animateCharacters]);
 
 	useEffect(() => {
 		if (!motion) return;
@@ -120,7 +129,7 @@ export function Creamery({ onHotspot, motion, tvActive, tvHovered }: Props) {
 	}, [hovered]);
 
 	useFrame((state, delta) => {
-		animateCharacters(delta, motion);
+		if (!document.hidden) animateCharacters(delta, motion, street);
 		if (!document.hidden) tvIdle.current?.update(delta, motion && !tvActive);
 		// The glTF exporter converts Blender's Z-up mesh data to Y-up, so the
 		// cylinder axis the blades were built around is local Y here.
@@ -153,19 +162,22 @@ export function Creamery({ onHotspot, motion, tvActive, tvHovered }: Props) {
 	};
 
 	return (
-		// biome-ignore lint/a11y/noStaticElementInteractions: a three.js object, not a DOM element; the Station Menu is the accessible route
-		<primitive
-			object={root}
-			onClick={(e: ThreeEvent<MouseEvent>) => {
-				const name = hotspotName(e);
-				if (!name) return;
-				e.stopPropagation();
-				onHotspot(name);
-			}}
-			onPointerMove={(e: ThreeEvent<PointerEvent>) => {
-				hit.current = hotspotName(e);
-			}}
-		/>
+		<>
+			<AnimalShadows cats={cats} />
+			{/* biome-ignore lint/a11y/noStaticElementInteractions: a three.js object, not a DOM element; the Station Menu is the accessible route */}
+			<primitive
+				object={root}
+				onClick={(e: ThreeEvent<MouseEvent>) => {
+					const name = hotspotName(e);
+					if (!name) return;
+					e.stopPropagation();
+					onHotspot(name);
+				}}
+				onPointerMove={(e: ThreeEvent<PointerEvent>) => {
+					hit.current = hotspotName(e);
+				}}
+			/>
+		</>
 	);
 }
 

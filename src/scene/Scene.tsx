@@ -201,6 +201,7 @@ export function Scene({ station, onStation, motion, tv, tvHovered }: Props) {
 			<Suspense fallback={null}>
 				<Creamery
 					motion={motion}
+					street={station.id === "street"}
 					tvActive={station.id === "shorts"}
 					tvHovered={tvHovered}
 					onHotspot={(name) => {
