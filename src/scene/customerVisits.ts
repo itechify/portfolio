@@ -31,21 +31,23 @@ const AISLE_X = -1.25;
 const SEAT_X = -0.95;
 // Leave room for relaxed hands beside the stools, with both feet on the sidewalk.
 const LANE_Z = 2.4;
-const SPEED = 1.05;
+const SPEED = 0.65;
+// Let each completed gesture settle before beginning the next action.
+const ACTION_PAUSE = 1.2;
 const smooth = (value: number) => {
 	const t = MathUtils.clamp(value, 0, 1);
 	return t * t * (3 - 2 * t);
 };
 const pulse = (t: number) => Math.sin(Math.PI * MathUtils.clamp(t, 0, 1)) ** 2;
 const durations: Partial<Record<Phase, number>> = {
-	sit: 2,
-	greet: 1.2,
-	cup: 2.2,
-	cookie: 1.8,
-	enjoy: 5,
-	return: 2.4,
-	goodbye: 1.4,
-	stand: 2,
+	sit: 3,
+	greet: 2.4,
+	cup: 4,
+	cookie: 3.6,
+	enjoy: 16,
+	return: 4,
+	goodbye: 2.8,
+	stand: 3,
 };
 const sequence: Phase[] = [
 	"approach",
@@ -153,10 +155,11 @@ export function createVisitSchedule(random = Math.random) {
 				return state;
 			}
 			state.time += dt;
-			state.progress = Math.min(1, state.time / (durations[state.phase] ?? 1));
+			const duration = durations[state.phase] ?? 1;
+			state.progress = Math.min(1, state.time / duration);
 			state.waiting =
 				state.phase === "goodbye" && state.progress >= 1 && blocked;
-			if (state.progress >= 1 && !state.waiting) next();
+			if (state.time >= duration + ACTION_PAUSE && !state.waiting) next();
 			return state;
 		},
 	};
@@ -455,18 +458,20 @@ export function createCustomerVisits(root: Object3D, random = Math.random) {
 			}
 			if (phase === "enjoy") {
 				customerCookie = true;
-				sip = still ? 0 : pulse(t / 2.4);
-				bite = still ? 0 : pulse((t - 2.6) / 1.8);
+				// Settle with the food, then take an unhurried sip and bite.
+				const eating = Math.max(0, (t - 2) / 2);
+				sip = still ? 0 : pulse(eating / 2.4);
+				bite = still ? 0 : pulse((eating - 2.6) / 1.8);
 				cupTarget.lerp(mouth, sip);
 				cupTarget.y -= sip * 0.035;
 				cookieTarget.copy(cookieRest).lerp(mouth, bite);
 				left.copy(cupTarget);
 				right.copy(cookieTarget);
-				milk.visible = still || t < 1.6;
+				milk.visible = still || eating < 1.6;
 				cookie.scale.setScalar(
-					still || t < 3.5 ? 1 : Math.max(0, 1 - (t - 3.5) / 0.9),
+					still || eating < 3.5 ? 1 : Math.max(0, 1 - (eating - 3.5) / 0.9),
 				);
-				customer.head.rotation.z = detail * pulse((t - 4.1) / 0.9) * 0.1;
+				customer.head.rotation.z = detail * pulse((eating - 4.1) / 0.9) * 0.1;
 			}
 			if (phase === "return") {
 				milk.visible = cookie.visible = false;

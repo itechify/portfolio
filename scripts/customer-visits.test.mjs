@@ -41,7 +41,7 @@ test("walking arms hang beside the torso rather than folding across the chest", 
 	const root = rig();
 	const visits = createCustomerVisits(root, () => 0);
 	const point = new Vector3();
-	for (let i = 0; i < 36 * 60; i++) {
+	for (let i = 0; i < 90 * 60; i++) {
 		const state = visits.update(1 / 60, true, true, []);
 		if (state.walking < 0.9) continue;
 		const travel = root.getObjectByName(
@@ -111,11 +111,17 @@ test("Entry and Street View gate arrivals; quiet gaps and two regulars repeat", 
 		assert.equal(advance(schedule, 4.9).phase, "quiet");
 		assert.equal(advance(schedule, 0.2).phase, "approach");
 		const phases = new Set();
-		for (let i = 0; i < 40 * 60 && schedule.state.phase !== "quiet"; i++) {
+		let visitSeconds = 0;
+		for (let i = 0; i < 80 * 60 && schedule.state.phase !== "quiet"; i++) {
 			phases.add(schedule.state.phase);
 			schedule.update(1 / 60, true, true, []);
+			visitSeconds += 1 / 60;
 		}
 		assert.equal(schedule.state.phase, "quiet");
+		assert.ok(
+			visitSeconds > 65 && visitSeconds < 75,
+			"an unhurried visit lasts about 70 seconds",
+		);
 		assert.equal(
 			phases.size,
 			10,
@@ -127,10 +133,23 @@ test("Entry and Street View gate arrivals; quiet gaps and two regulars repeat", 
 });
 
 test("every active phase completes when a Section opens; no queued arrivals", () => {
-	for (const at of [6, 12, 14, 16, 18, 21, 24, 27, 31]) {
+	for (const phase of [
+		"approach",
+		"sit",
+		"greet",
+		"cup",
+		"cookie",
+		"enjoy",
+		"return",
+		"goodbye",
+		"stand",
+		"leave",
+	]) {
 		const schedule = createVisitSchedule(() => 0.5);
-		advance(schedule, at);
-		assert.equal(advance(schedule, 60, true, false).phase, "quiet");
+		for (let i = 0; i < 80 * 60 && schedule.state.phase !== phase; i++)
+			schedule.update(1 / 60, true, true, []);
+		assert.equal(schedule.state.phase, phase);
+		assert.equal(advance(schedule, 90, true, false).phase, "quiet");
 		assert.equal(advance(schedule, 20).phase, "quiet");
 		assert.equal(advance(schedule, 3).phase, "approach");
 	}
@@ -174,7 +193,7 @@ test("exported rig performs continuous handoffs, with one visible customer and o
 	let previousPhase = "quiet";
 	let previousRotation;
 	let previousVariant = 0;
-	for (let i = 0; i < 90 * 60; i++) {
+	for (let i = 0; i < 180 * 60; i++) {
 		const state = visits.update(1 / 60, true, true, [], "full");
 		root.updateMatrixWorld(true);
 		const visible = [1, 2].filter(
@@ -255,10 +274,11 @@ test("reduced motion is one seated regular with food and an invariant pose on ev
 test("the sip tips the open rim toward the mouth and leaves an empty cup for return", () => {
 	const root = rig();
 	const visits = createCustomerVisits(root);
-	for (let i = 0; i < 30 * 60; i++) {
+	for (let i = 0; i < 70 * 60; i++) {
 		visits.update(1 / 60, true, true, []);
-		if (visits.state.phase === "enjoy" && visits.state.time >= 1) break;
+		if (visits.state.phase === "enjoy" && visits.state.time >= 4) break;
 	}
+	assert.equal(visits.state.phase, "enjoy");
 	const cup = root.getObjectByName("rig_service_cup");
 	const rim = new Vector3(0, 0.065, 0).applyQuaternion(cup.quaternion);
 	assert.ok(
@@ -266,7 +286,8 @@ test("the sip tips the open rim toward the mouth and leaves an empty cup for ret
 		"the rim moves back toward the seated customer's face",
 	);
 	assert.equal(root.getObjectByName("rig_service_milk").visible, true);
-	for (let i = 0; i < 4.5 * 60; i++) visits.update(1 / 60, true, true, []);
+	for (let i = 0; i < 20 * 60 && visits.state.phase !== "return"; i++)
+		visits.update(1 / 60, true, true, []);
 	assert.equal(visits.state.phase, "return");
 	assert.equal(root.getObjectByName("rig_service_milk").visible, false);
 });

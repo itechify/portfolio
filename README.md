@@ -29,8 +29,9 @@ one car crosses Street View at a time, with 20–40 seconds of quiet between tri
 New trips wait while a Section is open. No audio or real-time lights are added.
 
 Two robot regulars take turns visiting JJ at the middle counter stool. After
-Entry, the first arrives in about five seconds; a visit takes about 30 seconds,
+Entry, the first arrives in about five seconds; a visit takes about 70 seconds,
 plus any pauses to yield to the cats, followed by a 15–30-second quiet gap.
+They pause briefly between gestures and spend 16 seconds enjoying their food.
 They greet JJ, receive milk and a cookie, eat and drink, return the cup, and
 leave to the left. Customers wait offscreen or at their stool until cats clear
 the shared sidewalk, then walk facing their direction of travel. A cat already

@@ -64,17 +64,38 @@ export async function reviewCustomers(page, out) {
 		};
 		window.customerReview = review;
 	});
-	for (const seconds of [
-		8, 12.3, 14.9, 16.3, 18.4, 19.9, 22.5, 24.5, 26.5, 31, 51, 62,
+	for (const [phase, seconds] of [
+		["approach", 3],
+		["sit", 1.5],
+		["greet", 1.2],
+		["cup", 2],
+		["cup", 4.6],
+		["cookie", 2.5],
+		["enjoy", 1],
+		["enjoy", 4.4],
+		["enjoy", 9],
+		["enjoy", 15],
+		["return", 2.5],
+		["goodbye", 1.4],
+		["stand", 1.5],
+		["leave", 3],
 	]) {
-		const state = await page.evaluate((seconds) => {
-			const review = window.customerReview;
-			const state = review.step(Math.max(0, seconds - review.time));
-			review.render();
-			return state;
-		}, seconds);
-		await page.screenshot({ path: `${out}/customer-${seconds}.png` });
-		console.log("Customer pose", seconds, state.phase, state.variant);
+		const state = await page.evaluate(
+			({ phase, seconds }) => {
+				const review = window.customerReview;
+				for (let i = 0; i < 180 * 60; i++) {
+					const state = review.step(1 / 60);
+					if (state.phase === phase && state.time >= seconds) {
+						review.render();
+						return state;
+					}
+				}
+				throw new Error(`Customer did not reach ${phase} at ${seconds}s`);
+			},
+			{ phase, seconds },
+		);
+		await page.screenshot({ path: `${out}/customer-${phase}-${seconds}.png` });
+		console.log("Customer pose", phase, seconds, state.variant);
 	}
 	await page.evaluate(() => {
 		const review = window.customerReview;
