@@ -127,11 +127,29 @@ if (process.argv.includes("--traffic")) {
 	});
 	await page.screenshot({ path: `${out}/traffic-phone.png` });
 	await page.evaluate(() => window.trafficReview.state.setFrameloop("always"));
+	await page.getByRole("button", { name: "Quality settings" }).click();
+	await expect(
+		page.getByRole("radio", { name: "Full", exact: true }),
+	).toBeFocused();
+	await page.keyboard.press("ArrowDown");
+	await expect(
+		page.getByRole("radio", { name: "Balanced", exact: true }),
+	).toBeChecked();
+	await page.keyboard.press("Escape");
+	await expect(
+		page.getByRole("button", { name: "Quality settings" }),
+	).toBeFocused();
+	await expect(
+		page.getByRole("button", { name: "Quality settings" }),
+	).toHaveAttribute("aria-expanded", "false");
+	await page.getByRole("button", { name: "Quality settings" }).click();
 	for (const tier of ["balanced", "light", "auto"]) {
-		await page.getByLabel("Quality Tier").selectOption(tier);
+		await page.locator(`.quality-options input[value="${tier}"]`).check();
 		await page.waitForTimeout(500);
 		await page.screenshot({ path: `${out}/quality-${tier}.png` });
 	}
+	await page.keyboard.press("Escape");
+	await expect(page.locator(".quality-options")).not.toBeVisible();
 	const reduced = await browser.newPage({ reducedMotion: "reduce" });
 	let carRequested = false;
 	reduced.on("request", (r) => {

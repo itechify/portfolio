@@ -26,7 +26,8 @@ and independent wheel pivots. Traffic loads after Entry when motion is enabled;
 one car crosses Street View at a time, with 20–40 seconds of quiet between trips.
 New trips wait while a Section is open. No audio or real-time lights are added.
 
-The Quality Tier selector in Street View offers Auto, Full, Balanced, and Light.
+The cog button in Street View opens Quality Tier options: Auto, Full, Balanced,
+and Light. Use arrow keys to select an option, or Escape to close the panel.
 Auto starts at Balanced on touch devices and Full elsewhere, then steps down
 after sustained rendering below 43 fps. Balanced reduces reflection resolution
 and pixel density; Light removes the reflection and bloom and reduces pixel
