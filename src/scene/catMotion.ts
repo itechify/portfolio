@@ -174,16 +174,21 @@ function cat(root: Object3D, id: number, route: readonly Point[]) {
 		gait += Math.hypot(velocity.x, velocity.z) * 45;
 		if (delta > 0) velocity.divideScalar(delta);
 		velocity.y = 0;
+		// Unfold the seated body above the planted paws as the cat rises.
+		// Travel stays on the support plane so steps and landings remain grounded.
+		const standingLift = 0.04 * posture;
 		body.object.rotation.x = body.rotation.x + 0.95 * posture + 0.13 * stretch;
 		body.object.position.y =
 			body.position.y +
+			standingLift +
 			0.006 * Math.sin(gait * 2) * moving -
 			0.022 * compression -
 			0.008 * stretch;
 		body.object.scale.y = 1 + 0.008 * Math.sin(idleTime * 1.7 + id * 2.1);
 		if (haunch) {
 			haunch.object.rotation.x = 0.18 * posture - 0.08 * compression;
-			haunch.object.position.y = haunch.position.y - 0.012 * compression;
+			haunch.object.position.y =
+				haunch.position.y + standingLift - 0.012 * compression;
 		}
 		const glance =
 			Math.sin(
@@ -210,6 +215,8 @@ function cat(root: Object3D, id: number, route: readonly Point[]) {
 		// need opposite yaw; lifting before the turn would drive the tip down.
 		tail.object.rotation.x =
 			tail.rotation.x + 0.55 * smooth((posture - 0.55) / 0.45);
+		tail.object.position.y =
+			tail.position.y + standingLift - 0.012 * compression;
 		tail.object.rotation.y =
 			tail.rotation.y + (id === 1 ? 2.8 : -2.8) * posture + 0.06 * glance;
 		if (tailEnd)

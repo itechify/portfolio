@@ -191,6 +191,41 @@ test("a long suspended frame resumes gently", () => {
 
 for (const id of [1, 2])
 	for (const fps of [30, 60])
+		test(`cat ${id} lifts its haunch clear of the surface while walking at ${fps} fps`, () => {
+			const root = characterRig();
+			const update = createCharacterMotion(root);
+			const travel = root.getObjectByName(`rig_prop_cat_${id}_travel`);
+			const body = root.getObjectByName(`rig_prop_cat_${id}_body`);
+			const haunch = root.getObjectByName(`rig_prop_cat_${id}_haunch`);
+			const underside = new Vector3();
+			let checked = 0;
+			advance(
+				update,
+				54,
+				true,
+				() => {
+					if (
+						body.rotation.x < 0.9 ||
+						Math.abs(travel.position.y - 0.99) > 1e-6
+					)
+						return;
+					root.updateMatrixWorld(true);
+					// Bottom of the authored haunch ellipsoid, in its pivot's Y-up axes.
+					haunch.localToWorld(underside.set(0, -0.069, 0));
+					const clearance = underside.y - travel.position.y;
+					assert.ok(
+						clearance > 0.025,
+						`cat ${id} is still crouched against the surface: ${clearance}`,
+					);
+					checked++;
+				},
+				fps,
+			);
+			assert.ok(checked > fps / 2, "exercise a complete walking stride");
+		});
+
+for (const id of [1, 2])
+	for (const fps of [30, 60])
 		test(`cat ${id} anchors its supporting paws at ${fps} fps`, () => {
 			const root = characterRig();
 			const update = createCharacterMotion(root);
