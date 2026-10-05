@@ -22,10 +22,11 @@ interface Props {
 	onHotspot: (name: string) => void;
 	motion: boolean;
 	tvActive: boolean;
+	tvHovered: boolean;
 }
 
 /** The GLB built by blender/build.py, with Hotspot and Prop behaviour attached. */
-export function Creamery({ onHotspot, motion, tvActive }: Props) {
+export function Creamery({ onHotspot, motion, tvActive, tvHovered }: Props) {
 	const { scene } = useGLTF(MODEL_URL, DRACO_PATH);
 	const maxAnisotropy = useThree((s) => s.gl.capabilities.getMaxAnisotropy());
 	const [hovered, setHovered] = useState<string | null>(null);
@@ -38,9 +39,8 @@ export function Creamery({ onHotspot, motion, tvActive }: Props) {
 	const tvIdle = useRef<ReturnType<typeof createTvIdleAnimation> | null>(null);
 	// Emissive plates glow by raising emission; baked (unlit) plates glow by
 	// scaling their colour above white, which the bloom pass then picks up.
-	const hotspots = useRef(
-		new Map<string, MeshStandardMaterial | MeshBasicMaterial>(),
-	);
+	// Track meshes so the TV's current animated material receives hover too.
+	const hotspots = useRef(new Map<string, Mesh[]>());
 
 	const root = useMemo(() => {
 		// The ground is rendered by the reflective floor instead.
@@ -62,7 +62,9 @@ export function Creamery({ onHotspot, motion, tvActive }: Props) {
 				o.material = new MeshBasicMaterial({ map: std.map });
 			}
 			if (o.name.startsWith("prop_fan_")) fans.current.push(o);
-			if (o.name.startsWith("hotspot_")) {
+			let owner: Object3D | null = o;
+			while (owner && !owner.name.startsWith("hotspot_")) owner = owner.parent;
+			if (owner && (owner === o || owner.name === "hotspot_shorts_tv")) {
 				// Each Hotspot gets its own material so hover glow doesn't leak.
 				const m = (
 					o.material as MeshStandardMaterial | MeshBasicMaterial
@@ -71,7 +73,9 @@ export function Creamery({ onHotspot, motion, tvActive }: Props) {
 					m.userData.baseEmissive = m.emissiveIntensity;
 				}
 				o.material = m;
-				hotspots.current.set(o.name, m);
+				const meshes = hotspots.current.get(owner.name) ?? [];
+				meshes.push(o);
+				hotspots.current.set(owner.name, meshes);
 			}
 		});
 		return scene;
@@ -123,12 +127,18 @@ export function Creamery({ onHotspot, motion, tvActive }: Props) {
 		if (motion) for (const fan of fans.current) fan.rotateY(delta * 6);
 		// Additive boost, so dim plates like the sign and cow screen glow visibly.
 		const pulse = 0.8 + 0.4 * Math.sin(state.clock.elapsedTime * 4);
-		for (const [name, m] of hotspots.current) {
-			const boost = name === hovered ? (motion ? pulse : 0.8) : 0;
-			if (m instanceof MeshStandardMaterial) {
-				m.emissiveIntensity = (m.userData.baseEmissive as number) + boost;
-			} else {
-				m.color.setScalar(1 + boost);
+		const activeHover = tvHovered && !tvActive ? "hotspot_shorts_tv" : hovered;
+		for (const [name, meshes] of hotspots.current) {
+			const active =
+				name === activeHover && !(name === "hotspot_shorts_tv" && tvActive);
+			const boost = active ? (motion ? pulse : 0.8) : 0;
+			for (const mesh of meshes) {
+				const m = mesh.material as MeshStandardMaterial | MeshBasicMaterial;
+				if (m instanceof MeshStandardMaterial) {
+					m.emissiveIntensity = (m.userData.baseEmissive as number) + boost;
+				} else {
+					m.color.setScalar(1 + boost);
+				}
 			}
 		}
 	});

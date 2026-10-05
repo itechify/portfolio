@@ -930,11 +930,11 @@ def upper(m):
     box("upper_panel_a", (0.4, -1.32, 5.1), (2.2, 0.06, 0.5), m.blue_light)
     box("upper_panel_b", (-1.6, -1.32, 3.75), (1.6, 0.06, 0.4), m.blue_light)
     box("upper_panel_c", (2.0, -1.32, 3.75), (1.0, 0.06, 0.4), m.blue_mid)
-    # Keep the panel and its leads clear of the leftmost fan housing.
-    box("ctrl_panel", (-0.45, -1.34, 5.1), (0.7, 0.06, 0.3), m.purple)
+    # Stay on the raised backing (left edge -0.7), clear of the first fan.
+    box("ctrl_panel", (-0.3, -1.34, 5.1), (0.7, 0.06, 0.3), m.purple)
     for i, mt in enumerate((m.bulb_pink, m.neon, m.bulb)):
-        box(f"ctrl_light_{i}", (-0.65 + i * 0.2, -1.38, 5.1), (0.08, 0.02, 0.08), mt)
-    box("ctrl_grille", (-0.45, -1.37, 4.98), (0.5, 0.01, 0.03), m.ink)
+        box(f"ctrl_light_{i}", (-0.5 + i * 0.2, -1.38, 5.1), (0.08, 0.02, 0.08), mt)
+    box("ctrl_grille", (-0.3, -1.37, 4.98), (0.5, 0.01, 0.03), m.ink)
     # Cables snaking from the control panel to the cow screen, a junction
     # box, and down the side
     box("junction_box", (-0.62, -1.33, 4.0), (0.24, 0.08, 0.3), m.purple)
@@ -942,10 +942,10 @@ def upper(m):
     for i in range(3):
         box(f"junction_key_{i}", (-0.68 + i * 0.06, -1.39, 3.91), (0.035, 0.02, 0.035), m.ink)
     box("junction_light", (-0.56, -1.39, 4.08), (0.03, 0.01, 0.03), m.bulb_pink)
-    cable("cable_1", (-0.77, -1.4, 5.0), (-1.06, -1.56, 4.9), 0.24, 0.02, m.ink)
+    cable("cable_1", (-0.62, -1.4, 5.0), (-1.06, -1.56, 4.9), 0.24, 0.02, m.ink)
     tube(
         "cable_2",
-        [(-0.65, -1.41, 4.96), (-0.71, -1.44, 4.7), (-0.62, -1.44, 4.42), (-0.6, -1.4, 4.15)],
+        [(-0.5, -1.41, 4.96), (-0.56, -1.44, 4.7), (-0.62, -1.44, 4.42), (-0.6, -1.4, 4.15)],
         0.018,
         m.ink,
     )

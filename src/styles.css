@@ -132,21 +132,6 @@ button.entry {
 	box-shadow: 0 0 14px var(--pink);
 }
 
-/* Hint */
-.hint {
-	position: absolute;
-	top: 1.5rem;
-	left: 50%;
-	transform: translateX(-50%);
-	margin: 0;
-	font-size: 0.6rem;
-	color: var(--teal);
-	background: rgb(5 6 26 / 0.75);
-	padding: 0.75rem 1rem;
-	border: 2px solid var(--teal);
-	z-index: 5;
-}
-
 /* Sections: the side panel form (ADR 0002). Projection onto screens comes later. */
 .sections {
 	position: absolute;

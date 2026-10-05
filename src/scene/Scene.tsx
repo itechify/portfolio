@@ -18,6 +18,7 @@ interface Props {
 	station: Station;
 	onStation: (id: StationId) => void;
 	motion: boolean;
+	tvHovered: boolean;
 	tv: Parameters<typeof TvProjection>[0];
 }
 
@@ -176,7 +177,7 @@ function Street() {
 	);
 }
 
-export function Scene({ station, onStation, motion, tv }: Props) {
+export function Scene({ station, onStation, motion, tv, tvHovered }: Props) {
 	return (
 		<Canvas
 			dpr={[1, 2]}
@@ -201,6 +202,7 @@ export function Scene({ station, onStation, motion, tv }: Props) {
 				<Creamery
 					motion={motion}
 					tvActive={station.id === "shorts"}
+					tvHovered={tvHovered}
 					onHotspot={(name) => {
 						const s = stationByHotspot(name);
 						if (s) onStation(s.id);
