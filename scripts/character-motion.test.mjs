@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { Object3D } from "three";
+import { Object3D, Vector3 } from "three";
 import { createCharacterMotion } from "../src/scene/characterMotion.ts";
 
 function characterRig() {
@@ -267,3 +267,54 @@ test("time spent reading does not advance the chase schedule", () => {
 	});
 	assert.ok(seen, "chase should still occur after enough Street View time");
 });
+
+for (const [id, name] of [
+	[1, "Skadi"],
+	[2, "Freya"],
+]) {
+	test(`${name}'s moving tail clears the body and trails behind it`, () => {
+		const root = characterRig();
+		const update = createCharacterMotion(root);
+		const travel = root.getObjectByName(`rig_prop_cat_${id}_travel`);
+		const tail = root.getObjectByName(`rig_prop_cat_${id}_tail`);
+		const body = root.getObjectByName(`rig_prop_cat_${id}_body`);
+		// Authored tail centerline landmarks from build.py, relative to its
+		// exported Y-up pivot. Both coats use the same arc, mirrored for Freya.
+		const side = id === 1 ? 1 : -1;
+		const arc = [
+			[0.075, -0.008, 0.017],
+			[0.092, -0.021, 0.115],
+			[0.05, -0.025, 0.173],
+			[-0.02, -0.025, 0.187],
+		];
+		let checked = 0;
+		advance(update, 110, true, () => {
+			if (body.rotation.x < 0.05) return;
+			root.updateMatrixWorld(true);
+			for (const [x, y, z] of arc) {
+				const point = tail.localToWorld(new Vector3(side * x, y, z));
+				const inBody = body.worldToLocal(point.clone());
+				// The haunch ellipsoid in body-local coordinates, including fur.
+				const haunch =
+					(inBody.x / (id === 1 ? 0.103 : 0.09)) ** 2 +
+					((inBody.y + 0.021) / 0.069) ** 2 +
+					((inBody.z + 0.013) / 0.082) ** 2;
+				assert.ok(haunch > 1, `${name}'s tail passes inside its haunch`);
+				// Check the outward sweep while rising/settling too. The seated
+				// curl need only be behind the cat once it reaches its walking pose.
+				if (body.rotation.x < 0.8) continue;
+				const local = travel.worldToLocal(point);
+				assert.ok(
+					local.z < -0.075 || local.y > 0.25,
+					`${name}'s moving tail must be behind or above its body: ${local.toArray()}`,
+				);
+				assert.ok(
+					local.y >= (id === 1 ? 0.027 : 0.013),
+					`${name}'s tail must clear the walking surface: ${local.y}`,
+				);
+			}
+			checked++;
+		});
+		assert.ok(checked > 60, "exercise walking and hopping poses");
+	});
+}

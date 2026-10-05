@@ -131,10 +131,14 @@ function cat(root: Object3D, id: number, route: readonly Point[]) {
 			5,
 			delta,
 		);
-		tail.object.rotation.x = tail.rotation.x - 0.15 * posture;
+		// Unwrap the seated curl outwards, away from the haunch. Once it is
+		// behind the cat, lift it clear of the walking surface. Mirrored tails
+		// need opposite yaw; lifting before the turn would drive the tip down.
+		tail.object.rotation.x =
+			tail.rotation.x + 0.55 * smooth((posture - 0.55) / 0.45);
 		tail.object.rotation.y =
 			tail.rotation.y +
-			(id === 1 ? -1.4 : 1.4) * posture +
+			(id === 1 ? 2.8 : -2.8) * posture +
 			Math.sin(idleTime * 1.3) * 0.13;
 		const blink =
 			Math.sin(
