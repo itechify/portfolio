@@ -930,11 +930,11 @@ def upper(m):
     box("upper_panel_a", (0.4, -1.32, 5.1), (2.2, 0.06, 0.5), m.blue_light)
     box("upper_panel_b", (-1.6, -1.32, 3.75), (1.6, 0.06, 0.4), m.blue_light)
     box("upper_panel_c", (2.0, -1.32, 3.75), (1.0, 0.06, 0.4), m.blue_mid)
-    # Control panel with lights, top middle like the Reference
-    box("ctrl_panel", (-0.1, -1.34, 5.1), (0.7, 0.06, 0.3), m.purple)
+    # Stay on the raised backing (left edge -0.7), clear of the first fan.
+    box("ctrl_panel", (-0.3, -1.34, 5.1), (0.7, 0.06, 0.3), m.purple)
     for i, mt in enumerate((m.bulb_pink, m.neon, m.bulb)):
-        box(f"ctrl_light_{i}", (-0.3 + i * 0.2, -1.38, 5.1), (0.08, 0.02, 0.08), mt)
-    box("ctrl_grille", (-0.1, -1.37, 4.98), (0.5, 0.01, 0.03), m.ink)
+        box(f"ctrl_light_{i}", (-0.5 + i * 0.2, -1.38, 5.1), (0.08, 0.02, 0.08), mt)
+    box("ctrl_grille", (-0.3, -1.37, 4.98), (0.5, 0.01, 0.03), m.ink)
     # Cables snaking from the control panel to the cow screen, a junction
     # box, and down the side
     box("junction_box", (-0.62, -1.33, 4.0), (0.24, 0.08, 0.3), m.purple)
@@ -942,10 +942,10 @@ def upper(m):
     for i in range(3):
         box(f"junction_key_{i}", (-0.68 + i * 0.06, -1.39, 3.91), (0.035, 0.02, 0.035), m.ink)
     box("junction_light", (-0.56, -1.39, 4.08), (0.03, 0.01, 0.03), m.bulb_pink)
-    cable("cable_1", (-0.42, -1.4, 5.0), (-1.06, -1.56, 4.9), 0.24, 0.02, m.ink)
+    cable("cable_1", (-0.62, -1.4, 5.0), (-1.06, -1.56, 4.9), 0.24, 0.02, m.ink)
     tube(
         "cable_2",
-        [(-0.3, -1.41, 4.96), (-0.36, -1.44, 4.7), (-0.56, -1.44, 4.42), (-0.6, -1.4, 4.15)],
+        [(-0.5, -1.41, 4.96), (-0.56, -1.44, 4.7), (-0.62, -1.44, 4.42), (-0.6, -1.4, 4.15)],
         0.018,
         m.ink,
     )
@@ -1019,8 +1019,10 @@ def shorts_tv(m):
         parts.append(o)
         return o
 
-    plate = panel("hotspot_shorts_tv", (0, 0, 0), (1.08, 0.24, 1.82), m.ink)
-    panel("tv_trim", (0, -0.125, 0), (0.98, 0.025, 1.70), m.neon_soft)
+    # Match the cow display's purple casing, 0.10 rim and 0.05 dark inset,
+    # while keeping the portrait screen and its DOM projection in place.
+    plate = panel("hotspot_shorts_tv", (0, 0.02, 0), (1.2, 0.3, 1.9), m.purple)
+    panel("tv_frame_inner", (0, -0.14, 0), (1.0, 0.02, 1.7), m.ink)
     panel("tv_screen", (0, -0.145, 0), (0.9, 0.02, 1.6), m.screen_dark)
     # Idle artwork only: the live Shorts Section remains DOM (ADR 0002).
     # One small emissive texture keeps the image readable without scene lights.
@@ -1039,7 +1041,8 @@ def shorts_tv(m):
     face = _link(bpy.data.objects.new("tv_poster", mesh))
     mesh.materials.append(poster)
     parts.append(face)
-    panel("tv_status_light", (0.38, -0.14, -0.86), (0.035, 0.02, 0.018), m.neon_pink)
+    panel("tv_status_light", (0.38, -0.14, -0.89), (0.035, 0.02, 0.018), m.neon_pink)
+    panel("tv_power_socket", (-0.61, 0.02, -0.48), (0.08, 0.1, 0.12), m.ink)
     # Rotate all authored front-facing parts as one assembly.
     for o in parts:
         o.matrix_world = Matrix.Translation(origin) @ turn @ o.matrix_world
@@ -1048,7 +1051,18 @@ def shorts_tv(m):
 
     box("tv_wall_bracket", (2.87, -0.55, 4.48), (0.14, 0.4, 0.65), m.steel)
     tube("tv_mount_arm", [(2.91, -0.55, 4.48), (3.20, -0.55, 4.48), (3.38, -0.89, 4.48)], 0.07, m.ink)
-    tube("tv_power", [(2.86, -0.55, 4.2), (2.89, -0.55, 3.5), (2.85, -0.3, 3.15)], 0.018, m.ink)
+    # Share the cow display's junction box. Route below the fans and above
+    # the horizontal pipe, then wrap the corner into the TV's side socket.
+    power_inlet = origin + turn @ Vector((-0.65, 0.02, -0.48))
+    tube(
+        "tv_power",
+        [(-0.54, -1.35, 4.02), (-0.2, -1.48, 3.98), (0.9, -1.48, 3.92),
+         (2.0, -1.48, 3.98), (2.57, -1.48, 4.02), (2.72, -1.25, 4.01), power_inlet],
+        0.022,
+        m.ink,
+    )
+    for i, x in enumerate((0.1, 2.15)):
+        box(f"tv_power_clip_{i}", (x, -1.48, 3.96 if i == 0 else 3.995), (0.07, 0.08, 0.075), m.steel)
     anchor = _link(bpy.data.objects.new("tv_screen_anchor", None))
     # Empties' local axes are also converted by the exporter: Blender -Y
     # becomes glTF +Z, and Blender +Z becomes glTF +Y.

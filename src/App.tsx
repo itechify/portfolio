@@ -31,7 +31,7 @@ function hasWebGL() {
 export function App() {
 	const [entered, setEntered] = useState(false);
 	const [station, setStation] = useState<StationId>("street");
-	const [hintSeen, setHintSeen] = useState(false);
+	const [tvHovered, setTvHovered] = useState(false);
 	const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
 	const [webgl] = useState(hasWebGL);
 	const narrow = useMediaQuery("(max-width: 900px), (max-height: 680px)");
@@ -70,10 +70,6 @@ export function App() {
 		/>
 	);
 
-	useEffect(() => {
-		if (station !== "street") setHintSeen(true);
-	}, [station]);
-
 	if (!webgl) {
 		return (
 			<div className="plain-content">
@@ -93,6 +89,7 @@ export function App() {
 				station={stationById(station)}
 				onStation={selectStation}
 				motion={entered && !reducedMotion}
+				tvHovered={tvHovered}
 				tv={{
 					surface,
 					hotspot,
@@ -112,15 +109,12 @@ export function App() {
 						aria-label="Watch BetaByJ Shorts on the TV"
 						aria-controls="shorts"
 						disabled={station === "shorts"}
+						onPointerEnter={() => setTvHovered(true)}
+						onPointerLeave={() => setTvHovered(false)}
 						onClick={() => selectStation("shorts")}
 					>
 						<span className="sr-only">Watch BetaByJ Shorts on the TV</span>
 					</button>
-					{!hintSeen && station === "street" && (
-						<p className="hint pixel" role="status">
-							Click the glowing objects to look around
-						</p>
-					)}
 					<Sections current={station} onClose={() => setStation("street")} />
 					{shorts}
 				</>

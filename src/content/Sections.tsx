@@ -17,8 +17,9 @@ export const SECTIONS: readonly SectionDef[] = [
 		body: (
 			<>
 				<p>
-					<strong>Placeholder.</strong> Hi, I'm Jeffrey Davis. A short bio goes
-					here: what I build, what I care about, and what I'm looking at next.
+					Hi, I'm Jeffrey (JJ) Davis, a software engineer at Moebius Solutions. 
+					I build web apps, games, and AI-powered projects. 
+					Check them out in the projects section!
 				</p>
 			</>
 		),
@@ -35,7 +36,7 @@ export const SECTIONS: readonly SectionDef[] = [
 						model with baked lighting, rendered with React Three Fiber.
 					</p>
 					<p className="tags">
-						Three.js · React Three Fiber · Blender · TypeScript · Cloudflare
+						Three.js · React Three Fiber · Blender · TypeScript
 					</p>
 					<a href={REPO}>Source on GitHub</a>
 				</li>
@@ -60,8 +61,9 @@ export const SECTIONS: readonly SectionDef[] = [
 				<li>
 					<a href="https://github.com/itechify">GitHub</a>
 				</li>
-				<li>LinkedIn: placeholder</li>
-				<li>Email: placeholder</li>
+				<li>
+					<a href="https://www.linkedin.com/in/jeffrey-davis-9b0656187/">LinkedIn</a>
+				</li>
 			</ul>
 		),
 	},
@@ -82,18 +84,6 @@ export const SECTIONS: readonly SectionDef[] = [
 					.
 				</li>
 				<li>Built with Three.js, React Three Fiber, drei, and Blender.</li>
-				<li>Music and sound: to be credited when added.</li>
-				<li>
-					TV videos and their audio:{" "}
-					<a href="https://www.youtube.com/@BetaByJ/shorts">
-						BetaByJ (Jeffrey Davis)
-					</a>
-					, played through YouTube.
-				</li>
-				<li>
-					TV idle bouldering pixel art and animation frames: generated with
-					OpenAI.
-				</li>
 			</ul>
 		),
 	},
