@@ -272,6 +272,41 @@ button.entry {
 	min-height: 48px;
 }
 
+/* Let the modeled cow show through two signal bursts before About settles.
+ * Only the projected screen flickers; phone panels remain steady. */
+@media (prefers-reduced-motion: no-preference) {
+	.section--screen {
+		opacity: 0;
+	}
+
+	.section--screen[data-screen-ready="true"] {
+		animation: cow-screen-reveal 1000ms steps(1, end) both;
+	}
+}
+
+@keyframes cow-screen-reveal {
+	0%,
+	18% {
+		opacity: 0;
+	}
+	19%,
+	33% {
+		opacity: 0.8;
+	}
+	34%,
+	53% {
+		opacity: 0;
+	}
+	54%,
+	69% {
+		opacity: 0.6;
+	}
+	70%,
+	100% {
+		opacity: 1;
+	}
+}
+
 .section h2:focus-visible {
 	outline: 2px solid var(--teal);
 	outline-offset: 6px;

@@ -18,6 +18,7 @@ pnpm model:build --car-only # rebuild just the passing car
 pnpm check          # typecheck and lint
 node --test scripts/traffic.test.mjs # traffic, exported car, Quality Tiers
 node scripts/shot.mjs http://localhost:5173 # Street View and Station screenshots
+node scripts/shot.mjs http://localhost:5173 --about-reveal # cow-screen reveal phases and reduced motion
 node scripts/shot.mjs http://localhost:5173 --traffic # traffic and Quality Tier review
 node --test scripts/customer-visits.test.mjs # service, cat coexistence, exported rigs
 node --test scripts/about.test.mjs # About screen, phone panel, and keyboard flow (dev server running)
@@ -25,8 +26,11 @@ node scripts/shot.mjs http://localhost:5173 --customers # service poses and phon
 ```
 
 About appears as live HTML on the cow screen on wide viewports, with a framed
-camera and a readable panel on narrow or short viewports. Its screen position
-comes from the exported cow-screen plate geometry. The same Section stays in
+camera and a readable panel on narrow or short viewports. A one-second flicker
+reveal lets the cow show through two signal
+bursts, then settles on About. Reduced motion skips the reveal and phone panels
+stay steady. Its screen position comes from the exported cow-screen plate
+geometry. The same Section stays in
 the document before Entry and across layout changes. Opening a Section focuses
 its heading; Escape or "Back to the street" returns to Street View and restores
 focus to that Section's Station Menu control. The Shorts TV keeps its own return

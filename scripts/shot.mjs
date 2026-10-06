@@ -31,6 +31,41 @@ await page
 await page.waitForTimeout(2500);
 await page.screenshot({ path: `${out}/street.png` });
 
+if (process.argv.includes("--about-reveal")) {
+	await page.getByRole("button", { name: "About", exact: true }).click();
+	const section = page.locator("#about");
+	await expect
+		.poll(() => section.evaluate((element) => element.getAnimations().length))
+		.toBe(1);
+	await section.evaluate((element) => {
+		const animation = element.getAnimations()[0];
+		animation.pause();
+		animation.currentTime = 0;
+	});
+	await page.waitForTimeout(2000);
+	for (const [label, time] of [
+		["cow", 0],
+		["burst", 250],
+		["dropout", 400],
+		["settled", 1000],
+	]) {
+		await section.evaluate((element, time) => {
+			element.getAnimations()[0].currentTime = time;
+		}, time);
+		await page.screenshot({ path: `${out}/about-reveal-${label}.png` });
+	}
+	await page.emulateMedia({ reducedMotion: "reduce" });
+	await expect(section).toHaveCSS("opacity", "1");
+	assert.equal(
+		await section.evaluate((element) => element.getAnimations().length),
+		0,
+	);
+	await page.screenshot({ path: `${out}/about-reveal-reduced.png` });
+	assert.deepEqual(errors, []);
+	await browser.close();
+	process.exit(0);
+}
+
 if (process.argv.includes("--customers")) {
 	const { reviewCustomers } = await import("./customer-review.mjs");
 	await reviewCustomers(page, out);

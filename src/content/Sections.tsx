@@ -150,6 +150,7 @@ export function Sections({
 						id={s.id}
 						className={`section${active ? "" : " section--inactive"}${s.id === "about" && projected ? " section--screen" : ""}`}
 						aria-labelledby={`${s.id}-title`}
+						data-screen-ready={s.id === "about" ? aboutReady : undefined}
 						aria-hidden={active ? undefined : true}
 						inert={!active}
 					>

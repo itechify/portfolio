@@ -61,6 +61,12 @@ test("About is framed on its screen on desktop and stays readable as a phone pan
 	const page = await visit(t, { reducedMotion: "reduce" });
 	await page.getByRole("button", { name: "About", exact: true }).click();
 	const section = page.locator("#about");
+	await expect(section).toHaveCSS("opacity", "1");
+	assert.equal(
+		await section.evaluate((element) => element.getAnimations().length),
+		0,
+		"reduced motion reveals About without flickering",
+	);
 	await expect
 		.poll(async () => {
 			const box = await section.boundingBox();
@@ -108,6 +114,14 @@ test("phone visitors can open and reopen About with the keyboard", async (t) => 
 		await expect(
 			page.getByRole("heading", { name: "About", exact: true }),
 		).toBeFocused();
+		await expect(page.locator("#about")).toHaveCSS("opacity", "1");
+		assert.equal(
+			await page
+				.locator("#about")
+				.evaluate((element) => element.getAnimations().length),
+			0,
+			"phone panels remain steady",
+		);
 		await page.keyboard.press("Tab");
 		await expect(
 			page.getByRole("button", { name: "Back to the street" }),
@@ -155,4 +169,36 @@ test("returning from the TV to About preserves focus on the TV Hotspot", async (
 	await expect(
 		page.getByRole("heading", { name: "About", exact: true }),
 	).toBeFocused();
+});
+
+test("the cow screen flickers once to reveal About and replays when reopened", async (t) => {
+	const page = await visit(t, { reducedMotion: "no-preference" });
+	const about = page.getByRole("button", { name: "About", exact: true });
+	const section = page.locator("#about");
+	for (let i = 0; i < 2; i++) {
+		await about.click();
+		// Software WebGL can take longer to frame the screen under suite load.
+		await expect
+			.poll(
+				() => section.evaluate((element) => element.getAnimations().length),
+				{ timeout: 15_000, message: `reveal attempt ${i + 1}` },
+			)
+			.toBe(1);
+		const opacity = await section.evaluate((element) => {
+			const animation = element.getAnimations()[0];
+			animation.pause();
+			const samples = [0, 250, 400, 1000].map((time) => {
+				animation.currentTime = time;
+				return Number(getComputedStyle(element).opacity);
+			});
+			animation.finish();
+			return samples;
+		});
+		assert.equal(opacity[0], 0, "the cow remains visible before the reveal");
+		assert.ok(opacity[1] > 0.5, "About appears during the first burst");
+		assert.equal(opacity[2], 0, "a signal dropout reveals the cow again");
+		assert.equal(opacity[3], 1, "About settles fully opaque");
+		await page.keyboard.press("Escape");
+		await expect(about).toBeFocused();
+	}
 });
