@@ -35,6 +35,7 @@ export async function reviewModelDetails(page, out) {
 		["kiosk", [-5.8, 1.8, 3.5], [-4.2, 0.85, 0.4]],
 		["machine", [4.7, 1.65, 3.4], [3.3, 0.95, 0.6]],
 		["food", [-0.7, 1.85, 2.35], [-0.86, 1.02, 1.22]],
+		["pavement", [3.3, 2.8, 5.6], [1.25, 0, 2.2]],
 	];
 	const render = (position, target) =>
 		page.evaluate(
@@ -42,22 +43,37 @@ export async function reviewModelDetails(page, out) {
 			{ position, target },
 		);
 	const measurements = {};
+	const selectQualityTier = async (tier) => {
+		await page.getByRole("button", { name: "Quality settings" }).click();
+		await page.getByRole("radio", { name: tier, exact: true }).check();
+		await page.keyboard.press("Escape");
+		await page.waitForTimeout(500);
+	};
 	for (const [name, position, target] of views) {
 		measurements[name] = await render(position, target);
 		await page.screenshot({ path: `${out}/model-${name}.png` });
 	}
 	for (const tier of ["Balanced", "Light"]) {
-		await page.getByRole("button", { name: "Quality settings" }).click();
-		await page.getByRole("radio", { name: tier, exact: true }).check();
-		await page.keyboard.press("Escape");
-		await page.waitForTimeout(500);
+		await selectQualityTier(tier);
 		measurements[tier.toLowerCase()] = await render(views[0][1], views[0][2]);
 		await page.screenshot({ path: `${out}/model-${tier.toLowerCase()}.png` });
+		await render(views[6][1], views[6][2]);
+		await page.screenshot({
+			path: `${out}/model-pavement-${tier.toLowerCase()}.png`,
+		});
 	}
 	await page.setViewportSize({ width: 390, height: 844 });
 	await page.waitForTimeout(500);
-	measurements.phone = await render(views[0][1], views[0][2]);
-	await page.screenshot({ path: `${out}/model-phone.png` });
+	for (const tier of ["Full", "Balanced", "Light"]) {
+		await selectQualityTier(tier);
+		measurements[`phone-${tier.toLowerCase()}`] = await render(
+			views[0][1],
+			views[0][2],
+		);
+		await page.screenshot({
+			path: `${out}/model-phone-${tier.toLowerCase()}.png`,
+		});
+	}
 	const bytes = readFileSync(
 		new URL("../public/models/creamery.glb", import.meta.url),
 	);

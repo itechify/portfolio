@@ -20,6 +20,7 @@ for name, location, target, lens in (
     ("kiosk", (-5.8, -3.5, 1.8), (-4.2, -0.4, 0.85), 55),
     ("food", (-0.7, -2.35, 1.85), (-0.86, -1.22, 1.02), 60),
     ("serving", (-0.8, -2.0, 1.95), (-0.9, -1.05, 1.32), 60),
+    ("pavement", (3.3, -5.6, 2.8), (1.25, -2.2, 0), 45),
 ):
     bpy.ops.object.camera_add(location=location)
     camera = bpy.context.object
