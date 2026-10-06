@@ -23,6 +23,8 @@ node scripts/shot.mjs http://localhost:5173 --traffic # traffic and Quality Tier
 node --test scripts/customer-visits.test.mjs # service, cat coexistence, exported rigs
 node --test scripts/about.test.mjs # About screen, phone panel, and keyboard flow (dev server running)
 node scripts/shot.mjs http://localhost:5173 --customers # service poses and phone review
+node scripts/shot.mjs http://localhost:5173 --model-details # fixed detail views and rendering-cost counts
+blender -b --python-exit-code 1 --python blender/review_details.py -- after # matching Blender close views
 ```
 
 About appears as live HTML on the cow screen on wide viewports, with a framed
@@ -60,6 +62,16 @@ with portable baked shading; `customerVisits.ts` coordinates their rigid joints.
 
 `blender -b --python-exit-code 1 --python blender/check_counter.py` checks that
 the three counter cookies rest flat inside the plate rim without overlapping.
+
+The entrance is recessed into a split facade, with layered jambs, a threshold,
+and tinted glass. Coated cabinet paint, molded bezels, brushed steel, and
+localized contact wear are baked into the existing atlases. Cups have inner
+walls and rolled rims; the serving tray and irregular cookies keep their
+existing animation pivots. These details remain available in every Quality Tier.
+The model-detail review commands capture fixed cameras for comparisons:
+Blender writes to `blender/renders/model-details/<label>/`, and the browser
+writes `model-*.png` plus `model-metrics.json` to `blender/renders/web/`.
+The metrics count draw calls and submitted triangles, not actual phone fps.
 
 The cog button in Street View opens Quality Tier options: Auto, Full, Balanced,
 and Light. Use arrow keys to select an option, or Escape to close the panel.

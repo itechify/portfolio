@@ -1,0 +1,54 @@
+{
+	"bytes": 2848032,
+	"meshes": 127,
+	"primitives": 127,
+	"triangles": 188887,
+	"images": 19,
+	"measurements": {
+		"street": {
+			"calls": 132,
+			"triangles": 182886,
+			"textures": 54
+		},
+		"entrance": {
+			"calls": 117,
+			"triangles": 180504,
+			"textures": 54
+		},
+		"counter": {
+			"calls": 113,
+			"triangles": 180266,
+			"textures": 54
+		},
+		"kiosk": {
+			"calls": 44,
+			"triangles": 99984,
+			"textures": 54
+		},
+		"machine": {
+			"calls": 38,
+			"triangles": 81028,
+			"textures": 54
+		},
+		"food": {
+			"calls": 74,
+			"triangles": 146257,
+			"textures": 54
+		},
+		"balanced": {
+			"calls": 132,
+			"triangles": 182886,
+			"textures": 54
+		},
+		"light": {
+			"calls": 116,
+			"triangles": 182870,
+			"textures": 38
+		},
+		"phone": {
+			"calls": 102,
+			"triangles": 180336,
+			"textures": 38
+		}
+	}
+}

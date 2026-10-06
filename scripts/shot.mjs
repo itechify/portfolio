@@ -31,6 +31,14 @@ await page
 await page.waitForTimeout(2500);
 await page.screenshot({ path: `${out}/street.png` });
 
+if (process.argv.includes("--model-details")) {
+	const { reviewModelDetails } = await import("./model-review.mjs");
+	await reviewModelDetails(page, out);
+	assert.deepEqual(errors, []);
+	await browser.close();
+	process.exit(0);
+}
+
 if (process.argv.includes("--about-reveal")) {
 	await page.getByRole("button", { name: "About", exact: true }).click();
 	const section = page.locator("#about");
