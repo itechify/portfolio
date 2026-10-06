@@ -5,7 +5,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { chromium, expect } from "@playwright/test";
 
 const base = process.argv[2] ?? "http://localhost:5173";
-const out = "blender/renders/web";
+const out = process.env.REVIEW_OUTPUT ?? "blender/renders/web";
 mkdirSync(out, { recursive: true });
 
 const browser = await chromium.launch({
@@ -30,6 +30,14 @@ await page
 	.click({ timeout: 60_000 });
 await page.waitForTimeout(2500);
 await page.screenshot({ path: `${out}/street.png` });
+
+if (process.argv.includes("--lighting")) {
+	const { reviewLighting } = await import("./lighting-review.mjs");
+	await reviewLighting(page, out);
+	assert.deepEqual(errors, []);
+	await browser.close();
+	process.exit(0);
+}
 
 if (process.argv.includes("--model-details")) {
 	const { reviewModelDetails } = await import("./model-review.mjs");

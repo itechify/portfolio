@@ -69,6 +69,7 @@ export async function reviewCustomers(page, out) {
 		["sit", 1.5],
 		["greet", 1.2],
 		["prepare", 2],
+		["prepare", 4],
 		["prepare", 4.5],
 		["prepare", 6.5],
 		["prepare", 9],
@@ -79,9 +80,12 @@ export async function reviewCustomers(page, out) {
 		["enjoy", 1],
 		["enjoy", 4.4],
 		["enjoy", 9],
+		["enjoy", 10.2],
 		["enjoy", 15],
+		["return", 2],
 		["return", 2.5],
 		["clear", 3],
+		["clear", 5],
 		["clear", 9],
 		["goodbye", 1.4],
 		["stand", 1.5],
@@ -102,6 +106,18 @@ export async function reviewCustomers(page, out) {
 			{ phase, seconds },
 		);
 		await page.screenshot({ path: `${out}/customer-${phase}-${seconds}.png` });
+		if (["cup", "cookie", "enjoy", "return"].includes(phase)) {
+			await page.evaluate(() => {
+				const { state, visits } = window.customerReview;
+				const x = visits.shadow.position.x;
+				state.camera.position.set(x + 0.85, 1.65, 0.65);
+				state.camera.lookAt(x, 1.2, 1.65);
+				state.camera.updateMatrixWorld();
+				for (const sub of state.internal.subscribers)
+					if (sub.priority > 0) sub.ref.current(state, 0);
+			});
+			await page.screenshot({ path: `${out}/contact-${phase}-${seconds}.png` });
+		}
 		if (phase === "prepare" && seconds === 6.5) {
 			await page.evaluate(() => window.customerReview.render(false));
 			await page.screenshot({ path: `${out}/customer-dispensing-street.png` });

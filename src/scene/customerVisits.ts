@@ -41,6 +41,10 @@ const SEAT_X = -0.95;
 // Leave room for relaxed hands beside the stools, with both feet on the sidewalk.
 const LANE_Z = 2.4;
 const SPEED = 0.65;
+// Finished grippers in build.py: 34 mm thick, beneath a 10 mm tray base.
+const TRAY_SUPPORT_HEIGHT = 0.027;
+// Opposing hands leave a 10 mm gap between their fingers during transfer.
+const CUP_GRIP_HEIGHT = 0.022;
 // Let each completed gesture settle before beginning the next action.
 const pauses: Partial<Record<Phase, number>> = {
 	sit: 0.8,
@@ -531,7 +535,7 @@ export function createCustomerVisits(root: Object3D, random = Math.random) {
 				if (phase === "enjoy" && t > 9) jjHead.getWorldPosition(attention);
 			} else jjHead.getWorldPosition(attention);
 			customer.gaze(attention, dt, enabled);
-			customer.head.localToWorld(mouth.set(0, 0.085, 0.141));
+			customer.head.localToWorld(mouth.set(0, 0.085, 0.15));
 			jjRight.copy(rightIdle);
 			jjLeft.copy(leftIdle);
 			cupTarget.copy(cupDock);
@@ -550,12 +554,12 @@ export function createCustomerVisits(root: Object3D, random = Math.random) {
 			if (phase === "prepare") {
 				jjRight.lerp(cupDock, smooth((t - 2) / 2));
 				jjRight.y += 0.04 * pulse((t - 2) / 2);
-				wave.copy(trayDock).y -= 0.055;
+				wave.copy(trayDock).y -= TRAY_SUPPORT_HEIGHT;
 				jjLeft.lerp(wave, smooth((t - 2) / 2));
 				jjHoldsCup = jjHoldsTray = t >= 4;
 				if (jjHoldsTray) {
 					trayTarget.lerp(trayCarry, smooth(t - 4));
-					jjLeft.copy(trayTarget).y -= 0.055;
+					jjLeft.copy(trayTarget).y -= TRAY_SUPPORT_HEIGHT;
 				}
 				if (jjHoldsCup) {
 					cupTarget.lerp(cupCarry, smooth((t - 8) / 2));
@@ -569,7 +573,7 @@ export function createCustomerVisits(root: Object3D, random = Math.random) {
 			if (["cup", "cookie", "enjoy", "return", "clear"].includes(phase)) {
 				jjHoldsTray = !still;
 				trayTarget.copy(still ? trayDock : trayHome);
-				if (jjHoldsTray) jjLeft.copy(trayTarget).y -= 0.055;
+				if (jjHoldsTray) jjLeft.copy(trayTarget).y -= TRAY_SUPPORT_HEIGHT;
 				milk.visible = true;
 			}
 			if (phase === "greet" || phase === "goodbye") {
@@ -625,17 +629,22 @@ export function createCustomerVisits(root: Object3D, random = Math.random) {
 				// Settle with the food, then take an unhurried sip and bite.
 				const eating = Math.max(0, (t - 2) / 2);
 				sip = still ? 0 : pulse(eating / 2.4);
-				bite = still ? 0 : pulse((eating - 2.6) / 1.8);
-				cupTarget.lerp(mouth, sip);
-				cupTarget.y -= sip * 0.035;
-				cookieTarget.copy(cookieRest).lerp(mouth, bite);
+				bite = still
+					? 0
+					: smooth((t - 7.2) / 1.8) * (1 - smooth((t - 10.8) / 1.8));
+				// Bring the near lip to the mouth, keeping the vessel below it.
+				tilt.setFromAxisAngle(xAxis, sip * 0.7);
+				wave.set(0, 0.068, 0.047).applyQuaternion(tilt);
+				wave.subVectors(mouth, wave);
+				cupTarget.lerp(wave, sip);
+				// Finish eating at the mouth before withdrawing the empty hand.
+				cookie.scale.setScalar(still ? 1 : 1 - smooth((t - 9.4) / 1.4));
+				wave.copy(mouth).z -= 0.043 * cookie.scale.x;
+				cookieTarget.copy(cookieRest).lerp(wave, bite);
 				left.copy(cupTarget);
 				right.copy(cookieTarget);
 				milk.visible = still || eating < 1.6;
-				cookie.scale.setScalar(
-					still || eating < 3.5 ? 1 : Math.max(0, 1 - (eating - 3.5) / 0.9),
-				);
-				customer.head.rotation.z = detail * pulse((eating - 4.1) / 0.9) * 0.1;
+				customer.head.rotation.z = detail * pulse((t - 12.6) / 1.8) * 0.1;
 			}
 			if (phase === "return") {
 				milk.visible = cookie.visible = false;
@@ -655,14 +664,52 @@ export function createCustomerVisits(root: Object3D, random = Math.random) {
 				cupTarget.copy(cupCarry).lerp(cupDock, smooth((t - 3) / 2));
 				trayTarget.copy(trayCarry).lerp(trayDock, smooth((t - 3) / 2));
 				jjRight.copy(cupTarget).lerp(rightIdle, smooth(t - 5));
-				jjLeft.copy(trayTarget).y -= 0.055;
+				jjLeft.copy(trayTarget).y -= TRAY_SUPPORT_HEIGHT;
 				jjLeft.lerp(leftIdle, smooth(t - 5));
 				jjHoldsCup = jjHoldsTray = t < 5;
 			}
 			if (["clear", "goodbye", "stand", "leave"].includes(phase)) {
 				milk.visible = cookie.visible = false;
 			}
-			if (phase === "cookie") jjLeft.copy(trayTarget).y -= 0.055;
+			if (phase === "cookie") jjLeft.copy(trayTarget).y -= TRAY_SUPPORT_HEIGHT;
+			// Opposed grippers share the vessel at separate heights. Blend the
+			// contact offsets on approach/release as well as while carrying it.
+			const transfer = smooth((p - 0.5) / 0.5);
+			const jjGrip =
+				phase === "prepare"
+					? smooth((t - 2) / 2)
+					: phase === "cup"
+						? 1 - transfer
+						: phase === "return"
+							? smooth(p / 0.5)
+							: phase === "clear"
+								? 1 - smooth(t - 5)
+								: 0;
+			const customerGrip =
+				phase === "cup"
+					? smooth(p / 0.5)
+					: phase === "return"
+						? 1 - transfer
+						: customerCup
+							? 1
+							: 0;
+			jjRight.y -= CUP_GRIP_HEIGHT * jjGrip;
+			tilt.setFromAxisAngle(xAxis, sip * 0.7);
+			wave.set(0, CUP_GRIP_HEIGHT * customerGrip, 0).applyQuaternion(tilt);
+			left.add(wave);
+			jjCup.hand.scale.x = MathUtils.lerp(1, 0.98, jjGrip);
+			customer.left.hand.scale.x = MathUtils.lerp(1, 1.03, customerGrip);
+			customer.right.hand.scale.x = MathUtils.lerp(
+				1,
+				0.86 * Math.max(0.3, cookie.scale.x),
+				phase === "cookie"
+					? smooth(p / 0.5)
+					: customerCookie
+						? still
+							? 1
+							: 1 - smooth((t - 10.8) / 1.8)
+						: 0,
+			);
 			jjCup.reach(jjRight, upright);
 			jjTray.reach(jjLeft, upright);
 			tilt.setFromAxisAngle(xAxis, -sip * 0.7);
@@ -673,15 +720,19 @@ export function createCustomerVisits(root: Object3D, random = Math.random) {
 			);
 			customer.right.reach(right, orientation, 1 - seated);
 			// Render at the solved grip, even at a reach limit.
-			if (customerCup || jjHoldsCup)
+			if (customerCup || jjHoldsCup) {
 				(customerCup ? customer.left.hand : jjCup.hand).getWorldPosition(
 					cupTarget,
 				);
+				if (customerCup) cupTarget.sub(wave);
+				else cupTarget.y += CUP_GRIP_HEIGHT * jjGrip;
+			}
 			// Keep the label's orientation through both handoffs. Only the sip
 			// tips the vessel; changing owners must not spin it half a turn.
 			place(cup, cupTarget);
 			cup.rotation.x = sip * 0.7;
-			if (jjHoldsTray) jjTray.hand.getWorldPosition(trayTarget).y += 0.055;
+			if (jjHoldsTray)
+				jjTray.hand.getWorldPosition(trayTarget).y += TRAY_SUPPORT_HEIGHT;
 			place(tray, trayTarget);
 			if (customerCookie) customer.right.hand.getWorldPosition(cookieTarget);
 			else cookieTarget.copy(trayTarget).add(wave.set(0.045, 0.03, 0));
