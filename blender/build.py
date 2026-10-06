@@ -1168,7 +1168,8 @@ def serving_props(m):
 def customer(m, number, x):
     """Original enamel regulars: a teal round head and a pink square head.
 
-    Hip .66, thigh/shin .28/.28, shoulder 1.065; each limb joins at export.
+    Hip .66, thigh/shin .22/.34, shoulder 1.065; each limb joins at export.
+    The shorter thigh clears the stool cushion while the shin reaches its ring.
     """
     y = -2.28
     prefix = f"prop_customer_{number}"
@@ -1209,11 +1210,11 @@ def customer(m, number, x):
         lx = x + sign * 0.087
         thigh = articulation(f"rig_{prefix}_{side}_thigh", (lx, y, 0.66), [
             cyl("customer_hip", (lx, y, 0.66), 0.055, 0.075, m.steel_dull, axis="X"),
-            box("customer_thigh", (lx, y, 0.52), (0.09, 0.105, 0.23), accent),
+            box("customer_thigh", (lx, y, 0.55), (0.09, 0.105, 0.17), accent),
         ])
-        shin = articulation(f"rig_{prefix}_{side}_shin", (lx, y, 0.38), [
-            cyl("customer_knee", (lx, y, 0.38), 0.052, 0.10, m.purple, axis="X"),
-            box("customer_shin", (lx, y, 0.24), (0.08, 0.09, 0.22), m.blue_mid),
+        shin = articulation(f"rig_{prefix}_{side}_shin", (lx, y, 0.44), [
+            cyl("customer_knee", (lx, y, 0.44), 0.052, 0.10, m.purple, axis="X"),
+            box("customer_shin", (lx, y, 0.27), (0.08, 0.09, 0.28), m.blue_mid),
         ])
         foot = articulation(f"rig_{prefix}_{side}_foot", (lx, y, 0.10), [
             box("customer_boot", (lx, y - 0.024, 0.06), (0.115, 0.16, 0.115), m.purple),

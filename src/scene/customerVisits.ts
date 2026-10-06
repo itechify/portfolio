@@ -311,6 +311,7 @@ function regular(root: Object3D, id: number) {
 				required(root, `${prefix}_${side}_foot`),
 			),
 			step: createFootstep(),
+			floor: new Vector3(),
 		})),
 		gaze: createGaze(head, 0.42, 0.28),
 		previousPosition: travel.position.clone(),
@@ -443,30 +444,37 @@ export function createCustomerVisits(root: Object3D, random = Math.random) {
 			let yaw = Math.PI;
 			let x = SEAT_X;
 			let z = 1.9;
+			let mount = 1;
+			let height = 0;
 			if (phase === "approach" || phase === "leave" || phase === "quiet") {
 				seated = 0;
+				mount = 0;
+				height = -0.055;
 				x = state.x;
 				z = LANE_Z;
 				walk = state.walking;
 				yaw = phase === "leave" ? Math.PI * 1.5 : Math.PI / 2;
 			} else if (phase === "sit" || phase === "stand") {
-				const progress = phase === "sit" ? p : 1 - p;
-				// Step through the gap beside the seat, then settle sideways onto it.
-				z = MathUtils.lerp(LANE_Z, 1.9, smooth(progress / 0.6));
-				x = MathUtils.lerp(AISLE_X, SEAT_X, smooth((progress - 0.4) / 0.6));
-				seated = smooth((progress - 0.35) / 0.65);
-				walk = Math.sin(Math.PI * smooth(progress / 0.6)) * 0.35;
+				mount = phase === "sit" ? p : 1 - p;
+				// Turn in the aisle, plant one boot on the ring, then lift onto
+				// the seat. Reverse the same supports when stepping down.
+				z =
+					MathUtils.lerp(LANE_Z, 2.24, ease(mount / 0.5)) -
+					0.08 * ease((mount - 0.69) / 0.05) -
+					0.26 * ease((mount - 0.78) / 0.1);
+				x = MathUtils.lerp(AISLE_X, SEAT_X, ease(mount / 0.5));
+				seated = ease((mount - 0.68) / 0.3);
+				height =
+					-0.055 +
+					0.068 * ease((mount - 0.66) / 0.08) -
+					0.013 * ease((mount - 0.88) / 0.12);
 				yaw = MathUtils.lerp(
 					phase === "sit" ? Math.PI / 2 : Math.PI * 1.5,
 					Math.PI,
-					smooth(progress / 0.35),
+					ease(mount / 0.3),
 				);
 			}
-			customer.travel.position.set(
-				x,
-				seated === 1 ? 0 : -0.055 * (1 - seated),
-				z,
-			);
+			customer.travel.position.set(x, height, z);
 			customer.travel.rotation.set(0, yaw, 0);
 			velocity
 				.subVectors(customer.travel.position, customer.previousPosition)
@@ -482,7 +490,10 @@ export function createCustomerVisits(root: Object3D, random = Math.random) {
 			walk = Math.min(1, velocity.length() / SPEED);
 			customer.travel.position.y += 0.006 * Math.sin(customer.gait) ** 2 * walk;
 			// Lean forward over the support feet before sitting or rising.
-			const shift = phase === "sit" || phase === "stand" ? pulse(p) * 0.19 : 0;
+			const shift =
+				phase === "sit" || phase === "stand"
+					? pulse((mount - 0.25) / 0.55) * 0.14
+					: 0;
 			const settle = phase === "enjoy" ? detail * pulse((t - 10) / 3.5) : 0;
 			customer.body.rotation.set(
 				shift + 0.025 * seated + 0.015 * walk,
@@ -494,30 +505,50 @@ export function createCustomerVisits(root: Object3D, random = Math.random) {
 			customer.eyes.scale.y = customer.blink(dt, !!detail);
 			customer.travel.updateWorldMatrix(true, true);
 			orientation.copy(customer.travel.quaternion);
-			pole.set(0, 0, 1).applyQuaternion(orientation);
-			customer.feet.forEach(({ leg, step }, i) => {
+			customer.feet.forEach(({ leg, step, floor }, i) => {
 				footTarget.set(i === 0 ? -0.087 : 0.087, 0, 0);
 				customer.travel
 					.localToWorld(footTarget)
-					.addScaledVector(velocity, 0.36);
+					.addScaledVector(velocity, 0.22);
 				footTarget.y = 0.1;
-				step.update(
-					dt,
-					footTarget,
-					orientation,
-					!customer.feet[1 - i].step.swinging,
-					walk > 0.5 ? 0.24 : 0.07,
-					walk > 0.5 ? 0.3 : 0.26,
-					0.065,
+				const onFloor = mount < 0.52;
+				if (onFloor || priorPhase === "quiet" || still) {
+					step.update(
+						dt,
+						footTarget,
+						orientation,
+						!customer.feet[1 - i].step.swinging,
+						walk > 0.5 ? 0.15 : 0.035,
+						walk > 0.5 ? 0.22 : 0.18,
+						0.065,
+					);
+					floor.copy(step.target);
+				}
+				// Fixed world contacts: root lift must not lift the ring itself.
+				// Small, separate steps around the ring bring the shins clear of
+				// the front rim once the body is above the cushion.
+				const ringStep = ease((mount - (i === 0 ? 0.88 : 0.94)) / 0.06);
+				footTarget.set(
+					SEAT_X +
+						(i === 0 ? 1 : -1) *
+							(MathUtils.lerp(0.17, 0.11, ringStep) +
+								0.08 * Math.sin(Math.PI * ringStep)),
+					0.322 + Math.sin(Math.PI * ringStep) * 0.025,
+					MathUtils.lerp(1.84, 1.76, ringStep) -
+						0.08 * Math.sin(Math.PI * ringStep),
 				);
-				footTarget.set(i === 0 ? -0.087 : 0.087, 0.322, 0.16);
-				customer.travel.localToWorld(footTarget);
-				const liftToRing = ease(
-					MathUtils.clamp((seated - i * 0.08) / (1 - i * 0.08), 0, 1),
-				);
-				footTarget.lerpVectors(step.target, footTarget, liftToRing);
+				const liftToRing = ease((mount - (i === 0 ? 0.52 : 0.7)) / 0.14);
+				footTarget.lerpVectors(floor, footTarget, liftToRing);
 				footTarget.y += Math.sin(Math.PI * liftToRing) * 0.055;
 				tilt.slerpQuaternions(step.rotation, orientation, liftToRing);
+				const aroundSeat = ease((mount - 0.35) / 0.15) * (1 - ringStep);
+				pole
+					.set(
+						(i === 0 ? -1 : 1) * (0.5 * ease(mount / 0.5) + 0.5 * aroundSeat),
+						Math.sin(Math.PI * ringStep),
+						1 - 1.2 * aroundSeat,
+					)
+					.applyQuaternion(orientation);
 				leg.solve(footTarget, tilt, pole);
 			});
 			// Relaxed hands beside the hips, forward over the knees when seated.

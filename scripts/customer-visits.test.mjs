@@ -163,8 +163,138 @@ test("customers face their walking direction even around cats", () => {
 	}
 });
 
+test("legs pass around the stool seats during sitting and standing", () => {
+	const root = rig();
+	const visits = createCustomerVisits(root, () => 0);
+	const joints = [new Vector3(), new Vector3(), new Vector3()];
+	const point = new Vector3();
+	let samples = 0;
+	for (let frame = 0; frame < 105 * 60; frame++) {
+		const state = visits.update(1 / 60, true, true, []);
+		if (!["sit", "stand"].includes(state.phase)) continue;
+		for (const side of ["left", "right"]) {
+			// Sample inside each solid limb, 15 mm in from its beveled faces.
+			for (const [part, width, low, high, depth] of [
+				["thigh", 0.03, -0.18, -0.04, 0.0375],
+				["shin", 0.025, -0.295, -0.045, 0.03],
+			]) {
+				const limb = root.getObjectByName(
+					`rig_prop_customer_1_${side}_${part}`,
+				);
+				for (const x of [-width, 0, width])
+					for (let along = 0; along <= 12; along++)
+						for (const z of [-depth, 0, depth]) {
+							limb.localToWorld(
+								point.set(x, low + ((high - low) * along) / 12, z),
+							);
+							const inside =
+								point.y > 0.51 &&
+								point.y < 0.59 &&
+								[-2.15, -1.55, -0.95, -0.35].some(
+									(seat) => Math.hypot(point.x - seat, point.z - 1.9) < 0.19,
+								);
+							assert.ok(
+								!inside,
+								`${state.phase} at ${state.time}s: ${side} ${part} solid enters seat at ${point.toArray()}`,
+							);
+						}
+			}
+			["thigh", "shin", "foot"].forEach((part, i) => {
+				root
+					.getObjectByName(`rig_prop_customer_1_${side}_${part}`)
+					.getWorldPosition(joints[i]);
+			});
+			for (let bone = 0; bone < 2; bone++)
+				for (let sample = 0; sample <= 20; sample++) {
+					point.lerpVectors(joints[bone], joints[bone + 1], sample / 20);
+					const inside =
+						point.y > 0.51 &&
+						point.y < 0.59 &&
+						[-2.15, -1.55, -0.95, -0.35].some(
+							(seat) => Math.hypot(point.x - seat, point.z - 1.9) < 0.19,
+						);
+					assert.ok(
+						!inside,
+						`${state.phase} at ${state.time}s: ${side} leg enters seat at ${point.toArray()}`,
+					);
+					samples++;
+				}
+		}
+	}
+	assert.ok(samples > 100);
+});
+
+test("the pelvis clears the stool tops throughout sitting and standing", () => {
+	const root = rig();
+	const visits = createCustomerVisits(root, () => 0);
+	const point = new Vector3();
+	let samples = 0;
+	for (let frame = 0; frame < 105 * 60; frame++) {
+		const state = visits.update(1 / 60, true, true, []);
+		if (!["sit", "stand"].includes(state.phase)) continue;
+		const body = root.getObjectByName("rig_prop_customer_1_body");
+		// Bottom of the 28 x 22 x 13 cm pelvis against the authored seat disks.
+		for (let x = -2; x <= 2; x++)
+			for (let z = -2; z <= 2; z++) {
+				body.localToWorld(point.set(x * 0.07, -0.065, z * 0.055));
+				if (
+					[-2.15, -1.55, -0.95, -0.35].some(
+						(seat) => Math.hypot(point.x - seat, point.z - 1.9) < 0.185,
+					)
+				) {
+					assert.ok(
+						point.y >= 0.586,
+						`${state.phase} at ${state.time}s: pelvis enters seat at ${point.toArray()}`,
+					);
+					samples++;
+				}
+			}
+	}
+	assert.ok(samples > 100);
+});
+
 for (const fps of [30, 60])
-	test(`walking keeps a support foot without skating at ${fps} fps`, () => {
+	test(`stool transitions transfer weight through a planted foot at ${fps} fps`, () => {
+		for (const tier of ["full", "light"]) {
+			const root = rig();
+			const visits = createCustomerVisits(root, () => 0);
+			const point = new Vector3();
+			const previous = [new Vector3(), new Vector3()];
+			let samples = 0;
+			for (let frame = 0; frame < 105 * fps; frame++) {
+				const state = visits.update(1 / fps, true, true, [], tier);
+				if (!["sit", "stand"].includes(state.phase)) continue;
+				let supports = 0;
+				for (const [i, side] of ["left", "right"].entries()) {
+					root
+						.getObjectByName(`rig_prop_customer_1_${side}_foot`)
+						.getWorldPosition(point);
+					const floor = Math.abs(point.y - 0.1) < 0.001;
+					const ring =
+						Math.abs(point.y - 0.322) < 0.001 &&
+						[1.76, 1.84].some((z) => Math.abs(point.z - z) < 0.001);
+					if (floor || ring) {
+						supports++;
+						if (samples && Math.abs(previous[i].y - point.y) < 0.00001)
+							assert.ok(
+								point.distanceTo(previous[i]) < 0.002,
+								`${state.phase}: ${side} support slid`,
+							);
+					}
+					previous[i].copy(point);
+				}
+				assert.ok(
+					supports > 0,
+					`${state.phase} at ${state.time}s has no planted support`,
+				);
+				samples++;
+			}
+			assert.ok(samples > 6 * fps);
+		}
+	});
+
+for (const fps of [30, 60])
+	test(`both regulars keep support through walking starts and stops at ${fps} fps`, () => {
 		for (const tier of ["full", "light"]) {
 			const root = rig();
 			const visits = createCustomerVisits(root, () => 0.5);
@@ -172,18 +302,24 @@ for (const fps of [30, 60])
 			const point = new Vector3();
 			let samples = 0;
 			let plantedSamples = 0;
-			for (let i = 0; i < 25 * fps; i++) {
+			let previousPhase = "";
+			const exercised = new Set();
+			for (let i = 0; i < 220 * fps; i++) {
 				const state = visits.update(1 / fps, true, true, [], tier);
-				if (state.phase !== "approach" || state.time < 2 || state.walking < 0.8)
-					continue;
+				const continuous = previousPhase === state.phase;
+				previousPhase = state.phase;
+				if (!["approach", "leave"].includes(state.phase)) continue;
+				exercised.add(`${state.variant}-${state.phase}`);
 				let supported = false;
 				["left", "right"].forEach((side, index) => {
 					root
-						.getObjectByName(`rig_prop_customer_1_${side}_foot`)
+						.getObjectByName(
+							`rig_prop_customer_${state.variant + 1}_${side}_foot`,
+						)
 						.getWorldPosition(point);
 					if (Math.abs(point.y - 0.1) < 0.0001) {
 						supported = true;
-						if (samples && Math.abs(previous[index].y - 0.1) < 0.0001) {
+						if (continuous && Math.abs(previous[index].y - 0.1) < 0.0001) {
 							assert.ok(
 								point.distanceTo(previous[index]) < 0.002,
 								`planted ${side} foot slid ${point.distanceTo(previous[index])}m`,
@@ -197,6 +333,7 @@ for (const fps of [30, 60])
 				samples++;
 			}
 			assert.ok(samples > 5 * fps && plantedSamples > 4 * fps);
+			assert.equal(exercised.size, 4);
 		}
 	});
 
