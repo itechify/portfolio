@@ -1,25 +1,28 @@
 import { useFrame } from "@react-three/fiber";
 import { type RefObject, useMemo } from "react";
 import { Matrix4, Vector3 } from "three";
+import { SCREENS } from "./screens";
 
-export interface TvProjectionRefs {
-	surface: RefObject<HTMLDivElement | null>;
-	hotspot: RefObject<HTMLButtonElement | null>;
+export interface ScreenProjectionProps {
+	surface: RefObject<HTMLElement | null>;
+	hotspot?: RefObject<HTMLButtonElement | null>;
+	screen: keyof typeof SCREENS;
+	active: boolean;
+	narrow: boolean;
+	onReady?: (ready: boolean) => void;
 }
 
 /** Map the anchor's XY screen plane to CSS pixels, including perspective.
  * One live DOM surface stays mounted across camera movement and phone layout. */
-export function TvProjection({
+export function ScreenProjection({
 	surface,
 	hotspot,
+	screen,
 	active,
 	narrow,
 	onReady,
-}: TvProjectionRefs & {
-	active: boolean;
-	narrow: boolean;
-	onReady: (ready: boolean) => void;
-}) {
+}: ScreenProjectionProps) {
+	const { anchorName, pixelWidth, pixelHeight } = SCREENS[screen];
 	const scratch = useMemo(
 		() => ({
 			matrix: new Matrix4(),
@@ -33,19 +36,19 @@ export function TvProjection({
 		[],
 	);
 	useFrame(({ scene, camera, size }) => {
-		const anchor = scene.getObjectByName("tv_screen_anchor");
+		const anchor = scene.getObjectByName(anchorName);
 		if (!anchor) return;
 		const { matrix, local, position, normal, direction, corner } = scratch;
 		anchor.updateWorldMatrix(true, false);
 		const width = Number(anchor.userData.screenWidth);
 		const height = Number(anchor.userData.screenHeight);
 		local.set(
-			width / 360,
+			width / pixelWidth,
 			0,
 			0,
 			-width / 2,
 			0,
-			-height / 640,
+			-height / pixelHeight,
 			0,
 			height / 2,
 			0,
@@ -94,9 +97,9 @@ export function TvProjection({
 		let inFront = true;
 		for (const [x, y] of [
 			[0, 0],
-			[360, 0],
-			[360, 640],
-			[0, 640],
+			[pixelWidth, 0],
+			[pixelWidth, pixelHeight],
+			[0, pixelHeight],
 		]) {
 			corner.set(x, y, 0).applyMatrix4(matrix);
 			inFront &&= corner.z > -1 && corner.z < 1;
@@ -114,28 +117,31 @@ export function TvProjection({
 			maxY > 0 &&
 			minX < size.width &&
 			minY < size.height;
-		if (hotspot.current) {
+		if (hotspot?.current) {
 			hotspot.current.style.transform = visible ? transform : "none";
 			// Keep a keyboard route even when the visitor orbits behind the TV.
 			hotspot.current.dataset.offscreen = String(!visible);
 		}
 		if (surface.current) {
+			surface.current.style.setProperty("--screen-width", `${pixelWidth}px`);
+			surface.current.style.setProperty("--screen-height", `${pixelHeight}px`);
 			surface.current.style.transform = narrow ? "none" : transform;
 			surface.current.style.visibility =
 				active && (narrow || visible) ? "visible" : "hidden";
 		}
 		const ready =
-			narrow ||
-			(visible &&
-				maxX - minX >= 200 &&
-				maxY - minY >= 200 &&
-				minX >= 0 &&
-				minY >= 0 &&
-				maxX <= size.width &&
-				maxY <= size.height);
+			active &&
+			(narrow ||
+				(visible &&
+					maxX - minX >= 200 &&
+					maxY - minY >= 200 &&
+					minX >= 0 &&
+					minY >= 0 &&
+					maxX <= size.width &&
+					maxY <= size.height));
 		if (scratch.ready !== ready) {
 			scratch.ready = ready;
-			onReady(ready);
+			onReady?.(ready);
 		}
 	});
 	return null;

@@ -360,6 +360,12 @@ for (const label of process.argv.includes("--tv-only")
 	await page.getByRole("button", { name: label, exact: true }).click();
 	await page.waitForTimeout(1800);
 	await page.screenshot({ path: `${out}/${label.toLowerCase()}.png` });
+	if (label === "About") {
+		await page.setViewportSize({ width: 390, height: 844 });
+		await page.waitForTimeout(1800);
+		await page.screenshot({ path: `${out}/about-phone.png` });
+		await page.setViewportSize({ width: 1280, height: 800 });
+	}
 }
 
 await expect(page.locator(".station-menu")).not.toContainText("BetaByJ");

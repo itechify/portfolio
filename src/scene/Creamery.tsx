@@ -2,10 +2,11 @@ import { useGLTF } from "@react-three/drei";
 import { type ThreeEvent, useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+	Box3,
 	Mesh,
 	MeshBasicMaterial,
 	MeshStandardMaterial,
-	type Object3D,
+	Object3D,
 	TextureLoader,
 } from "three";
 import { stationByHotspot } from "../stations";
@@ -13,6 +14,7 @@ import { AnimalShadows } from "./AnimalShadows";
 import { createCharacterMotion } from "./characterMotion";
 import { createCustomerVisits } from "./customerVisits";
 import type { QualityTier } from "./quality";
+import { SCREENS } from "./screens";
 import { createTvIdleAnimation } from "./tvIdleAnimation";
 
 const MODEL_URL = "/models/creamery.glb";
@@ -55,6 +57,26 @@ export function Creamery({
 	const hotspots = useRef(new Map<string, Mesh[]>());
 
 	const root = useMemo(() => {
+		// The upright cow screen already supplies its physical bounds. Derive
+		// the DOM anchor from the plate alone, excluding its cow-face children.
+		const plate = scene.getObjectByName("hotspot_about_cowscreen");
+		if (
+			plate instanceof Mesh &&
+			!scene.getObjectByName(SCREENS.about.anchorName)
+		) {
+			plate.updateWorldMatrix(true, false);
+			plate.geometry.computeBoundingBox();
+			const bounds = new Box3()
+				.copy(plate.geometry.boundingBox)
+				.applyMatrix4(plate.matrixWorld);
+			const anchor = new Object3D();
+			anchor.name = SCREENS.about.anchorName;
+			bounds.getCenter(anchor.position);
+			anchor.position.z = bounds.max.z;
+			anchor.userData.screenWidth = bounds.max.x - bounds.min.x;
+			anchor.userData.screenHeight = bounds.max.y - bounds.min.y;
+			scene.add(anchor);
+		}
 		// The ground is rendered by the reflective floor instead.
 		scene.getObjectByName("ground")?.removeFromParent();
 		fans.current = [];

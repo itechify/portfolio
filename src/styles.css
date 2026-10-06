@@ -132,7 +132,7 @@ button.entry {
 	box-shadow: 0 0 14px var(--pink);
 }
 
-/* Sections: the side panel form (ADR 0002). Projection onto screens comes later. */
+/* Sections: panels and live screen projection (ADR 0002). */
 .quality-selector {
 	position: absolute;
 	top: 1rem;
@@ -216,7 +216,7 @@ button.entry {
 	position: absolute;
 	top: 1rem;
 	right: 1rem;
-	bottom: 4.5rem;
+	bottom: calc(var(--station-menu-height, 2.5rem) + 2rem);
 	width: min(28rem, calc(100vw - 2rem));
 	z-index: 5;
 	pointer-events: none;
@@ -237,6 +237,44 @@ button.entry {
 	font-size: 0.9rem;
 	color: var(--pink);
 	margin: 0 0 1rem;
+}
+
+/* The cow screen uses the same live Section in both layouts. */
+.sections.sections--projected {
+	inset: 0;
+	width: 100%;
+	max-height: none;
+}
+
+.section.section--screen {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: var(--screen-width);
+	height: var(--screen-height);
+	max-height: none;
+	transform-origin: 0 0;
+	padding: 36px;
+	border: 0;
+	background: #080e24;
+	box-shadow: inset 0 0 32px rgb(64 160 224 / 0.18);
+	backdrop-filter: none;
+	font-size: 24px;
+}
+
+.section--screen h2 {
+	font-size: 26px;
+	color: var(--teal);
+}
+
+.section--screen .close {
+	font-size: 14px;
+	min-height: 48px;
+}
+
+.section h2:focus-visible {
+	outline: 2px solid var(--teal);
+	outline-offset: 6px;
 }
 
 .section h3 {
@@ -287,7 +325,6 @@ button.entry {
 @media (max-width: 700px) {
 	.sections {
 		top: auto;
-		bottom: 4.5rem;
 		left: 1rem;
 		right: 1rem;
 		width: auto;

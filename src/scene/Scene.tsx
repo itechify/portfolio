@@ -13,15 +13,20 @@ import { BackSide, Box3, Color, MathUtils, Vector3 } from "three";
 import { type Station, type StationId, stationByHotspot } from "../stations";
 import { Creamery } from "./Creamery";
 import { createQualityMonitor, QUALITY, type QualityTier } from "./quality";
+import {
+	ScreenProjection,
+	type ScreenProjectionProps,
+} from "./ScreenProjection";
+import { SCREENS } from "./screens";
 import { Traffic } from "./Traffic";
-import { TvProjection } from "./TvProjection";
 
 interface Props {
 	station: Station;
 	onStation: (id: StationId) => void;
 	motion: boolean;
 	tvHovered: boolean;
-	tv: Parameters<typeof TvProjection>[0];
+	tv: Omit<ScreenProjectionProps, "screen">;
+	about: Omit<ScreenProjectionProps, "screen">;
 	quality: QualityTier;
 	onLowerQuality?: (tier: QualityTier) => void;
 }
@@ -51,8 +56,8 @@ function Rig({ station, motion }: { station: Station; motion: boolean }) {
 			);
 			return;
 		}
-		if (station.id === "shorts") {
-			const anchor = scene.getObjectByName("tv_screen_anchor");
+		if (station.id === "shorts" || station.id === "about") {
+			const anchor = scene.getObjectByName(SCREENS[station.id].anchorName);
 			if (!anchor) return;
 			anchor.updateWorldMatrix(true, false);
 			const center = anchor.getWorldPosition(new Vector3());
@@ -62,9 +67,15 @@ function Rig({ station, motion }: { station: Station; motion: boolean }) {
 			// Reserve breathing room for the housing and Station Menu. The
 			// narrow layout uses a panel, so it can keep a wider camera frame.
 			const narrow = size.width <= 900 || size.height <= 680;
+			const height = Number(anchor.userData.screenHeight);
+			const width = Number(anchor.userData.screenWidth);
+			const framedHeight =
+				station.id === "about"
+					? Math.max(height / 0.64, width / ((size.width / size.height) * 0.72))
+					: height / 0.7;
 			const distance = narrow
 				? station.distance
-				: 1.6 / (2 * Math.tan(MathUtils.degToRad(20)) * 0.7);
+				: framedHeight / (2 * Math.tan(MathUtils.degToRad(20)));
 			const eye = center.clone().addScaledVector(normal, distance);
 			c.setLookAt(...eye.toArray(), ...center.toArray(), motion);
 			return;
@@ -87,12 +98,12 @@ function Rig({ station, motion }: { station: Station; motion: boolean }) {
 		<CameraControls
 			ref={controls}
 			makeDefault
-			enabled={station.id !== "shorts"}
+			enabled={station.id !== "shorts" && station.id !== "about"}
 			minAzimuthAngle={MathUtils.degToRad(-60)}
 			maxAzimuthAngle={MathUtils.degToRad(60)}
 			minPolarAngle={MathUtils.degToRad(50)}
 			maxPolarAngle={MathUtils.degToRad(92)}
-			minDistance={3}
+			minDistance={station.id === "about" ? 1 : 3}
 			maxDistance={24}
 			smoothTime={0.6}
 		/>
@@ -202,6 +213,7 @@ export function Scene({
 	onStation,
 	motion,
 	tv,
+	about,
 	tvHovered,
 	quality,
 	onLowerQuality,
@@ -263,7 +275,8 @@ export function Scene({
 				onLower={onLowerQuality}
 			/>
 			<Rig station={station} motion={motion} />
-			<TvProjection {...tv} />
+			<ScreenProjection screen="shorts" {...tv} />
+			<ScreenProjection screen="about" {...about} />
 			<EffectComposer multisampling={0}>
 				{/* Baked textures top out at 1.0, so only emissives above it bloom. */}
 				{tier.bloom && (
