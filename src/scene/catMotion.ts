@@ -143,6 +143,8 @@ function cat(root: Object3D, id: number, route: readonly Point[]) {
 		const from = travel.object.position.clone();
 		const to = new Vector3(...route[toNode]);
 		const hop = Math.abs(from.y - to.y) > 0.1;
+		const heading = Math.atan2(to.x - from.x, to.z - from.z);
+		const turn = Math.abs(angle(0, heading - travel.object.rotation.y, 1));
 		const launchSpeed = Math.sqrt(
 			2 * 9.8 * (Math.max(0, to.y - from.y) + 0.14),
 		);
@@ -152,7 +154,7 @@ function cat(root: Object3D, id: number, route: readonly Point[]) {
 			fromNode: node,
 			toNode,
 			yaw: travel.object.rotation.y,
-			heading: Math.atan2(to.x - from.x, to.z - from.z),
+			heading,
 			posture,
 			elapsed: 0,
 			duration: hop
@@ -163,7 +165,8 @@ function cat(root: Object3D, id: number, route: readonly Point[]) {
 			hop,
 			chasing,
 			launchSpeed,
-			prepare: chasing ? 0.7 : 1.4,
+			// A reversal needs several planted steps, even during the chase.
+			prepare: Math.max(chasing ? 0.7 : 1.4, turn * 1.25),
 		};
 	}
 
@@ -188,6 +191,14 @@ function cat(root: Object3D, id: number, route: readonly Point[]) {
 		const standingLift = 0.036 * posture;
 		body.object.rotation.x = body.rotation.x + 1.2 * posture + 0.13 * stretch;
 		body.object.rotation.z = body.rotation.z + 0.012 * Math.sin(gait) * moving;
+		// Transfer the chest toward the three supporting paws before the next
+		// lift. The legs retain their world anchors through this small shift.
+		body.object.position.x = MathUtils.damp(
+			body.object.position.x,
+			body.position.x + (walkOrder[nextStep] % 2 ? -1 : 1) * 0.004 * posture,
+			8,
+			delta,
+		);
 		body.object.position.y =
 			body.position.y +
 			standingLift +
@@ -341,7 +352,11 @@ function cat(root: Object3D, id: number, route: readonly Point[]) {
 					delta,
 					footTarget,
 					travel.object.quaternion,
-					steppingFoot === i || (!!journey?.chasing && steppingFoot === 3 - i),
+					steppingFoot === i ||
+						(!!journey?.chasing &&
+							moving > 0 &&
+							posture > 0.9 &&
+							steppingFoot === 3 - i),
 					-1,
 					journey?.chasing ? 0.06 : 0.1,
 					journey?.chasing ? 0.02 : 0.012,
@@ -466,16 +481,16 @@ function cat(root: Object3D, id: number, route: readonly Point[]) {
 					1,
 				);
 				posture =
-					MathUtils.lerp(
-						j.posture,
-						1,
-						smooth((j.elapsed - prepare * 0.4) / (prepare * 0.6)),
-					) *
-					(1 - smooth((j.elapsed - prepare - j.duration) / finish));
+					MathUtils.lerp(j.posture, 1, ease(j.elapsed / (prepare * 0.65))) *
+					(1 -
+						ease(
+							(j.elapsed - prepare - j.duration - (j.hop ? 0.24 : 0)) /
+								(finish - (j.hop ? 0.24 : 0)),
+						));
 				travel.object.rotation.y = angle(
 					j.yaw,
 					j.heading,
-					smooth((j.elapsed - 0.12) / (prepare * 0.55)),
+					ease((j.elapsed - prepare * 0.15) / (prepare * 0.85)),
 				);
 				// Smooth acceleration and braking, with exact support-plane landings.
 				travel.object.position.lerpVectors(
@@ -492,8 +507,9 @@ function cat(root: Object3D, id: number, route: readonly Point[]) {
 					landing = Math.max(0, j.elapsed - prepare - j.duration);
 					compression =
 						j.elapsed < prepare
-							? Math.sin(Math.PI * ease(j.elapsed / prepare)) ** 2
-							: Math.sin(Math.PI * Math.min(1, landing / 0.38)) ** 2;
+							? 0.7 * ease((j.elapsed / prepare - 0.55) / 0.45)
+							: 0.7 * (1 - ease((j.elapsed - prepare) / 0.1)) +
+								Math.sin(Math.PI * Math.min(1, landing / 0.45)) ** 2;
 				}
 				moving = j.hop ? 0 : Math.sin(Math.PI * progress);
 				shadowHeight = progress < 0.5 ? j.from.y : j.to.y;

@@ -393,6 +393,63 @@ function advance(update, seconds, street = true, observe = () => {}, fps = 60) {
 	}
 }
 
+for (const fps of [30, 60])
+	test(`cats keep support while rising, turning and settling at ${fps} fps`, () => {
+		const root = characterRig();
+		const update = createCharacterMotion(root);
+		const previous = [[], []];
+		const lastHeight = [NaN, NaN];
+		let checked = 0;
+		let elapsed = 0;
+		advance(
+			update,
+			120,
+			true,
+			() => {
+				elapsed += 1 / fps;
+				for (const id of [1, 2]) {
+					const travel = root.getObjectByName(`rig_prop_cat_${id}_travel`);
+					const onSurface = [0, 0.59, 0.99].some(
+						(y) => Math.abs(travel.position.y - y) < 1e-6,
+					);
+					let contacts = 0;
+					["front_left", "front_right", "hind_left", "hind_right"].forEach(
+						(name, i) => {
+							const point = root
+								.getObjectByName(`rig_prop_cat_${id}_${name}_paw`)
+								.getWorldPosition(new Vector3());
+							const ankle = travel.position.y + (i < 2 ? 0.018 : 0.019);
+							if (onSurface && Math.abs(point.y - ankle) < 0.001) {
+								contacts++;
+								const prior = previous[id - 1][i];
+								if (
+									prior &&
+									Math.abs(prior.y - ankle) < 0.0001 &&
+									Math.abs(point.y - ankle) < 0.0001
+								)
+									assert.ok(
+										point.distanceTo(prior) < 0.002,
+										`cat ${id} ${name} skates during weight transfer`,
+									);
+							}
+							previous[id - 1][i] = point;
+						},
+					);
+					if (onSurface && lastHeight[id - 1] === travel.position.y) {
+						assert.ok(
+							contacts >= 2,
+							`cat ${id} has only ${contacts} supports during weight transfer at ${elapsed}s`,
+						);
+						checked++;
+					}
+					lastHeight[id - 1] = travel.position.y;
+				}
+			},
+			fps,
+		);
+		assert.ok(checked > 100 * fps);
+	});
+
 test("Skadi starts exploring within ten seconds while Freya stays aloof", () => {
 	const root = characterRig();
 	const skadi = root.getObjectByName("rig_prop_cat_1_travel");

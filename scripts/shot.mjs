@@ -24,12 +24,28 @@ const errors = [];
 page.on("pageerror", (e) => errors.push(e.message));
 page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
 
+if (process.argv.includes("--motion-before"))
+	await page.route("**/models/creamery.glb", (route) =>
+		route.fulfill({
+			path: "blender/renders/motion-baseline/creamery.glb",
+			contentType: "model/gltf-binary",
+		}),
+	);
+
 await page.goto(base);
 await page
 	.getByRole("button", { name: "Open the shop" })
 	.click({ timeout: 60_000 });
 await page.waitForTimeout(2500);
 await page.screenshot({ path: `${out}/street.png` });
+
+if (process.argv.includes("--motion")) {
+	const { reviewMotion } = await import("./motion-review.mjs");
+	await reviewMotion(page, out, process.argv.includes("--motion-before"));
+	assert.deepEqual(errors, []);
+	await browser.close();
+	process.exit(0);
+}
 
 if (process.argv.includes("--lighting")) {
 	const { reviewLighting } = await import("./lighting-review.mjs");
