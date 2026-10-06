@@ -33,6 +33,7 @@ function hasWebGL() {
 export function App() {
 	const [entered, setEntered] = useState(false);
 	const [station, setStation] = useState<StationId>("street");
+	const [focusSectionHeading, setFocusSectionHeading] = useState(true);
 	const [tvHovered, setTvHovered] = useState(false);
 	const [qualityChoice, setQualityChoice] = useState<QualityChoice>(() => {
 		try {
@@ -68,10 +69,14 @@ export function App() {
 	const lastStation = useRef<StationId>("street");
 	const [screenReady, setScreenReady] = useState(false);
 	const selectStation = (id: StationId) => {
+		setFocusSectionHeading(true);
 		if (id === "shorts" && station !== "shorts") previous.current = station;
 		setStation(id);
 	};
 	const closeTv = useCallback(() => {
+		// Returning from the TV restores its Hotspot, even if the underlying
+		// Section's screen becomes readable a frame later.
+		setFocusSectionHeading(false);
 		setStation(previous.current);
 		requestAnimationFrame(() =>
 			hotspot.current?.focus({ preventScroll: true }),
@@ -154,6 +159,7 @@ export function App() {
 				onClose={() => setStation("street")}
 				aboutSurface={aboutSurface}
 				aboutReady={aboutReady}
+				focusHeading={focusSectionHeading}
 				narrow={narrow}
 			/>
 			{entered && (

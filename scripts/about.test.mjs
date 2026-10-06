@@ -126,3 +126,33 @@ test("phone visitors can open and reopen About with the keyboard", async (t) => 
 		await expect(about).toBeFocused();
 	}
 });
+
+test("returning from the TV to About preserves focus on the TV Hotspot", async (t) => {
+	const page = await visit(t, { viewport: { width: 390, height: 844 } });
+	await page.route("https://www.youtube.com/iframe_api", (route) =>
+		route.fulfill({ contentType: "text/javascript", body: "" }),
+	);
+	await page.getByRole("button", { name: "About", exact: true }).click();
+	await expect(
+		page.getByRole("heading", { name: "About", exact: true }),
+	).toBeFocused();
+	const tv = page.getByRole("button", {
+		name: "Watch BetaByJ Shorts on the TV",
+		exact: true,
+	});
+	await tv.focus();
+	await page.keyboard.press("Enter");
+	await page.getByRole("button", { name: "Close TV", exact: true }).click();
+	await expect(
+		page.getByRole("heading", { name: "About", exact: true }),
+	).toBeVisible();
+	await expect(tv).toBeFocused();
+	await page.keyboard.press("Escape");
+	await expect(
+		page.getByRole("button", { name: "About", exact: true }),
+	).toBeFocused();
+	await page.keyboard.press("Enter");
+	await expect(
+		page.getByRole("heading", { name: "About", exact: true }),
+	).toBeFocused();
+});

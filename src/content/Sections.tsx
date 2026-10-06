@@ -97,6 +97,7 @@ interface Props {
 	plain?: boolean;
 	aboutSurface?: RefObject<HTMLElement | null>;
 	aboutReady?: boolean;
+	focusHeading?: boolean;
 	narrow?: boolean;
 	onClose: () => void;
 }
@@ -111,6 +112,7 @@ export function Sections({
 	onClose,
 	aboutSurface,
 	aboutReady = false,
+	focusHeading = true,
 	narrow = false,
 }: Props) {
 	const main = useRef<HTMLElement>(null);
@@ -119,6 +121,7 @@ export function Sections({
 		if (focused.current !== current) focused.current = null;
 		if (
 			plain ||
+			!focusHeading ||
 			focused.current === current ||
 			(current === "about" && !aboutReady)
 		)
@@ -127,7 +130,7 @@ export function Sections({
 			?.querySelector<HTMLElement>(`#${current} h2`)
 			?.focus({ preventScroll: true });
 		focused.current = current;
-	}, [current, plain, aboutReady]);
+	}, [current, plain, aboutReady, focusHeading]);
 	const projected = current === "about" && !plain && !narrow;
 	return (
 		<main
