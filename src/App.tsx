@@ -33,6 +33,7 @@ function hasWebGL() {
 export function App() {
 	const [entered, setEntered] = useState(false);
 	const [station, setStation] = useState<StationId>("street");
+	const [focusSectionHeading, setFocusSectionHeading] = useState(true);
 	const [tvHovered, setTvHovered] = useState(false);
 	const [qualityChoice, setQualityChoice] = useState<QualityChoice>(() => {
 		try {
@@ -61,23 +62,40 @@ export function App() {
 	const [webgl] = useState(hasWebGL);
 	const narrow = useMediaQuery("(max-width: 900px), (max-height: 680px)");
 	const surface = useRef<HTMLDivElement>(null);
+	const aboutSurface = useRef<HTMLElement>(null);
+	const [aboutReady, setAboutReady] = useState(false);
 	const hotspot = useRef<HTMLButtonElement>(null);
 	const previous = useRef<StationId>("street");
+	const lastStation = useRef<StationId>("street");
 	const [screenReady, setScreenReady] = useState(false);
 	const selectStation = (id: StationId) => {
+		setFocusSectionHeading(true);
 		if (id === "shorts" && station !== "shorts") previous.current = station;
 		setStation(id);
 	};
 	const closeTv = useCallback(() => {
+		// Returning from the TV restores its Hotspot, even if the underlying
+		// Section's screen becomes readable a frame later.
+		setFocusSectionHeading(false);
 		setStation(previous.current);
 		requestAnimationFrame(() =>
 			hotspot.current?.focus({ preventScroll: true }),
 		);
 	}, []);
 	useEffect(() => {
-		if (station !== "shorts") return;
+		if (station === "street" && lastStation.current !== "street") {
+			document
+				.getElementById(`station-${lastStation.current}`)
+				?.focus({ preventScroll: true });
+		}
+		lastStation.current = station;
+	}, [station]);
+	useEffect(() => {
+		if (station === "street") return;
 		const onKeyDown = (event: KeyboardEvent) => {
-			if (event.key === "Escape") closeTv();
+			if (event.key !== "Escape" || event.defaultPrevented) return;
+			if (station === "shorts") closeTv();
+			else setStation("street");
 		};
 		window.addEventListener("keydown", onKeyDown);
 		return () => window.removeEventListener("keydown", onKeyDown);
@@ -116,6 +134,12 @@ export function App() {
 				motion={entered && !reducedMotion}
 				tvHovered={tvHovered}
 				quality={quality}
+				about={{
+					surface: aboutSurface,
+					active: entered && station === "about",
+					narrow,
+					onReady: setAboutReady,
+				}}
 				onLowerQuality={
 					entered && qualityChoice === "auto" && station === "street"
 						? setAutoQuality
@@ -130,6 +154,14 @@ export function App() {
 				}}
 			/>
 			{!entered && <Loader onEnter={() => setEntered(true)} />}
+			<Sections
+				current={entered ? station : "street"}
+				onClose={() => setStation("street")}
+				aboutSurface={aboutSurface}
+				aboutReady={aboutReady}
+				focusHeading={focusSectionHeading}
+				narrow={narrow}
+			/>
 			{entered && (
 				<>
 					<StationMenu current={station} onSelect={selectStation} />
@@ -153,7 +185,6 @@ export function App() {
 					>
 						<span className="sr-only">Watch BetaByJ Shorts on the TV</span>
 					</button>
-					<Sections current={station} onClose={() => setStation("street")} />
 					{shorts}
 				</>
 			)}
