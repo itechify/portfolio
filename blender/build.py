@@ -47,6 +47,7 @@ PAL = {
     "pink_pale": "f8b0d0",
     "white": "f8f8f8",
     "cream": "fff1d0",
+    "warm": "ffc58a",
     "cookie": "c98a4b",
     "choc": "5a3420",
     "porcelain": "d4cebc",
@@ -1117,9 +1118,11 @@ def robot_arm(m, prefix, shoulder, upper_length, lower_length, enamel):
         box("robot_forearm_inset", (x, y - 0.047, elbow[2] - lower_length / 2), (0.035, 0.01, lower_length * 0.6), m.blue_mid),
     ])
     grip = (x, y, elbow[2] - lower_length)
-    parts = [box("robot_palm", (x, y + 0.05, grip[2]), (0.105, 0.045, 0.06), m.purple)]
+    # The gap fits the finished cup wall; the runtime closes it for a cookie.
+    # Thin fingers allow opposite hands to share the cup at different heights.
+    parts = [box("robot_palm", (x, y + 0.071, grip[2]), (0.13, 0.035, 0.034), m.purple)]
     for side in (-1, 1):
-        parts.append(box("robot_finger", (x + side * 0.052, y - 0.002, grip[2]), (0.02, 0.085, 0.065), m.steel_dull))
+        parts.append(box("robot_finger", (x + side * 0.057, y + 0.003, grip[2]), (0.016, 0.11, 0.034), m.steel_dull))
     hand = articulation(f"rig_{prefix}_hand", grip, parts)
     parent([hand], lower)
     parent([lower], upper)
@@ -1742,19 +1745,20 @@ def lights_and_cameras(scene):
     # Moonlight from the upper left is the key: it lights tops brighter than
     # fronts and casts the shadows under the sign, ledges, and canopies that
     # give the Reference its depth. The front fill only lifts the shadows.
-    moon = light("moon", "SUN", (0, 0, 10), "teal_pale", 1.6)
+    moon = light("moon", "SUN", (0, 0, 10), "teal_pale", 1.0)
     moon.data.angle = math.radians(4)
     moon.rotation_euler = Vector((0.55, 0.75, -1.0)).to_track_quat("-Z", "Y").to_euler()
-    light("fill", "AREA", (0, -12, 6), "blue_mid", 380, size=8, rot=(math.radians(70), 0, 0))
-    light("neon_glow", "AREA", (-0.9, -2.3, 2.9), "teal", 250, size=3, rot=(math.radians(90), 0, 0))
-    light("counter_glow", "POINT", (-1.2, -0.6, 2.1), "pink", 260, size=0.5)
-    light("counter_glow_teal", "POINT", (-0.3, 0.0, 1.6), "teal", 60, size=0.3)
-    # Shop light spilling out of the opening onto the stools and sidewalk
-    light("counter_spill", "AREA", (-1.2, -1.2, 2.2), "pink_pale", 120, size=2.2, rot=(math.radians(-25), 0, 0))
+    light("fill", "AREA", (0, -12, 6), "blue_mid", 220, size=8, rot=(math.radians(70), 0, 0))
+    light("neon_glow", "AREA", (-0.9, -2.3, 2.9), "teal", 90, size=3, rot=(math.radians(90), 0, 0))
+    # Warm service light is the focal point; cyan stays local to machinery.
+    # Less frontal fill leaves the jambs and shelf recesses legible in the bake.
+    light("counter_glow", "POINT", (-1.2, -0.6, 2.1), "warm", 110, size=0.45)
+    light("counter_glow_teal", "POINT", (-0.3, 0.0, 1.6), "teal", 18, size=0.3)
+    light("counter_spill", "AREA", (-1.2, -1.2, 2.2), "cream", 100, size=1.8, rot=(math.radians(-25), 0, 0))
     light("kiosk_glow", "POINT", (-4.2, -1.0, 1.0), "teal", 40, size=0.3)
     light("machine_glow", "POINT", (3.3, -1.3, 1.2), "teal", 40, size=0.3)
-    light("cow_glow", "POINT", (-1.9, -2.2, 4.3), "pink_pale", 60, size=0.6)
-    light("door_lamps", "AREA", (2.0, -1.75, 2.3), "white", 40, size=0.8, rot=(math.radians(20), 0, 0))
+    light("cow_glow", "POINT", (-1.9, -2.2, 4.3), "pink_pale", 30, size=0.6)
+    light("door_lamps", "AREA", (2.0, -1.75, 2.3), "white", 25, size=0.8, rot=(math.radians(20), 0, 0))
 
     # A dim indigo sky: ambient light from above, so tops read lighter
     world = bpy.data.worlds.new("Night")
@@ -1762,7 +1766,7 @@ def lights_and_cameras(scene):
     world.use_nodes = True
     bg = world.node_tree.nodes["Background"]
     bg.inputs["Color"].default_value = (0.02, 0.022, 0.07, 1)
-    bg.inputs["Strength"].default_value = 1.0
+    bg.inputs["Strength"].default_value = 0.7
 
     cams = {}
     for name, loc, look, lens in (

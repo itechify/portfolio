@@ -378,6 +378,93 @@ test("reduced motion is one seated regular with food and an invariant pose on ev
 	}
 });
 
+test("both hands share separate bands of the cup at serving and return", () => {
+	const root = rig();
+	const visits = createCustomerVisits(root, () => 0);
+	const phases = new Set();
+	for (let i = 0; i < 110 * 60; i++) {
+		const state = visits.update(1 / 60, true, true, []);
+		if (
+			!["cup", "return"].includes(state.phase) ||
+			Math.abs(state.progress - 0.5) > 0.002
+		)
+			continue;
+		const cup = root.getObjectByName("rig_service_cup");
+		const jj = root
+			.getObjectByName("rig_barista_cup_hand")
+			.getWorldPosition(new Vector3());
+		const customer = root
+			.getObjectByName("rig_prop_customer_1_left_hand")
+			.getWorldPosition(new Vector3());
+		assert.ok(jj.y < cup.position.y - 0.02, "JJ grips the lower band");
+		assert.ok(
+			customer.y > cup.position.y + 0.02,
+			"customer grips the upper band",
+		);
+		assert.ok(
+			jj.distanceTo(customer) < 0.05,
+			"both hands contact the same vessel",
+		);
+		phases.add(state.phase);
+	}
+	assert.deepEqual([...phases], ["cup", "return"]);
+});
+
+test("the cookie stays at the mouth while eaten, then the empty hand withdraws", () => {
+	const root = rig();
+	const visits = createCustomerVisits(root, () => 0);
+	const cookie = root.getObjectByName("rig_service_cookie");
+	let eatingSamples = 0;
+	let finished = false;
+	for (let i = 0; i < 90 * 60; i++) {
+		const state = visits.update(1 / 60, true, true, []);
+		if (state.phase !== "enjoy") continue;
+		if (state.time >= 9.5 && state.time <= 10.6) {
+			const edge = cookie.localToWorld(new Vector3(0, 0, 0.043));
+			const mouth = root
+				.getObjectByName("rig_prop_customer_1_head")
+				.localToWorld(new Vector3(0, 0.085, 0.15));
+			assert.ok(
+				edge.distanceTo(mouth) < 0.009,
+				`cookie leaves mouth while eaten: ${edge.distanceTo(mouth)}m`,
+			);
+			eatingSamples++;
+		}
+		if (state.time >= 13) {
+			assert.equal(cookie.scale.x, 0);
+			const hand = root
+				.getObjectByName("rig_prop_customer_1_right_hand")
+				.getWorldPosition(new Vector3());
+			assert.ok(hand.y < 1.06, "empty hand returns below the face");
+			finished = true;
+			break;
+		}
+	}
+	assert.ok(eatingSamples > 60 && finished);
+});
+
+test("the drinking rim meets the mouth without pushing the cup through the face", () => {
+	for (const tier of ["full", "light"]) {
+		const root = rig();
+		const visits = createCustomerVisits(root, () => 0);
+		for (let i = 0; i < 90 * 60; i++) {
+			const state = visits.update(1 / 60, true, true, [], tier);
+			if (state.phase !== "enjoy" || state.time < 4.4) continue;
+			const cup = root.getObjectByName("rig_service_cup");
+			const head = root.getObjectByName("rig_prop_customer_1_head");
+			// Finished vessel lip and mouth coordinates from the authored model.
+			const rim = cup.localToWorld(new Vector3(0, 0.068, 0.047));
+			const mouth = head.localToWorld(new Vector3(0, 0.085, 0.15));
+			assert.ok(
+				rim.distanceTo(mouth) < 0.006,
+				`${tier}: rim misses mouth by ${rim.distanceTo(mouth)}m`,
+			);
+			break;
+		}
+		assert.equal(visits.state.phase, "enjoy");
+	}
+});
+
 test("the sip tips the open rim toward the mouth and leaves an empty cup for return", () => {
 	const root = rig();
 	const visits = createCustomerVisits(root);
