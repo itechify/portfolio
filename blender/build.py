@@ -54,6 +54,9 @@ PAL = {
     "cookie_edge": "9d6136",
     "steel": "8a98b8",
     "pave": "34366a",
+    "pave_worn": "41436d",
+    "pave_damp": "242742",
+    "puddle": "30394d",
 }
 
 random.seed(7)
@@ -633,6 +636,83 @@ def screen_content(prefix, center, w, h, material, rows=4, seed=0, depth=0.012):
 CURB = 0.12  # the road sits this far below the sidewalk
 
 
+def street_patch(name, outline, height, material):
+    """Flat wear with explicit clearance, joined into the existing street atlas."""
+    # Author outlines in either direction, but always face up for the bake
+    # and the browser's back-face culling.
+    area = sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(outline, outline[1:] + outline[:1]))
+    if area < 0:
+        outline = list(reversed(outline))
+    mesh = bpy.data.meshes.new(name)
+    mesh.from_pydata([(x, y, height) for x, y in outline], [], [tuple(range(len(outline)))])
+    mesh.update()
+    obj = _link(bpy.data.objects.new(name, mesh))
+    obj.data.materials.append(material)
+    return obj
+
+
+def street_detail(m):
+    """Local entrance wear; the walkway and passing traffic keep their clearance.
+
+    These opaque surfaces bake their sheen and remain readable in Light.
+    No new reflector, transparent overlay, texture or draw call is needed.
+    """
+    worn = mat("pave_worn", "pave_worn", rough=0.94)
+    damp = mat("pave_damp", "pave_damp", rough=0.82)
+    water = mat("shallow_water", "puddle", rough=0.16, metal=0.25, finish="glass")
+    # A shallow drain well in the opening cut from the sidewalk below.
+    box("street_drain_bed", (1.68, -2.07, -0.046), (0.42, 0.40, 0.018), m.ink)
+    for x in (1.484, 1.876):
+        box("street_drain_frame", (x, -2.07, -0.008), (0.028, 0.40, 0.024), m.steel_dull)
+    for y in (-2.256, -1.884):
+        box("street_drain_frame", (1.68, y, -0.008), (0.364, 0.028, 0.024), m.steel_dull)
+    for i in range(7):
+        box(f"street_drain_bar_{i}", (1.524 + i * 0.052, -2.07, -0.010), (0.022, 0.344, 0.022), m.steel_dull)
+
+    # Small asymmetric chips and a repaired corner along two existing joints.
+    # Kept above the original joints (top 3 mm) to survive GLB quantization.
+    for i, outline in enumerate((
+        [(1.058, -2.39), (1.12, -2.34), (1.09, -2.28), (1.14, -2.24), (1.058, -2.18)],
+        [(2.108, -1.74), (2.19, -1.80), (2.25, -1.83), (2.18, -1.86), (2.108, -1.95)],
+        [(0.07, -2.40), (0.23, -2.40), (0.16, -2.34), (0.09, -2.29)],
+    )):
+        street_patch(f"street_worn_joint_{i}", outline, 0.007, worn)
+    street_patch("street_hairline", [
+        (2.26, -1.89), (2.38, -1.96), (2.43, -2.13), (2.57, -2.23),
+        (2.42, -2.14), (2.367, -1.97), (2.25, -1.90),
+    ], 0.007, damp)
+
+    # Deterministic, low silhouettes: spills near the bin/door and water at
+    # the curb. The outer damp ring and inner water share edges, never overlap.
+    for i, (cx, cy, rx, ry, height, wet) in enumerate((
+        (1.30, -1.91, 0.13, 0.18, 0.005, False),
+        (1.96, -2.26, 0.10, 0.11, 0.005, False),
+        (0.35, -2.30, 0.16, 0.08, 0.005, False),
+        (2.18, -2.90, 0.69, 0.23, -CURB + 0.007, True),
+        (-0.38, -2.86, 0.45, 0.17, -CURB + 0.007, True),
+    )):
+        count = 32
+        outline = []
+        for j in range(count):
+            a = j * math.tau / count
+            radius = 1 + 0.10 * math.sin(a * 3 + i) + 0.06 * math.cos(a * 5 - i)
+            outline.append((cx + rx * radius * math.cos(a), cy + ry * radius * math.sin(a)))
+        if not wet:
+            street_patch(f"street_stain_{i}", outline, height, damp)
+            continue
+        inner = [(cx + (x - cx) * 0.91, cy + (y - cy) * 0.83) for x, y in outline]
+        mesh = bpy.data.meshes.new(f"street_puddle_{i}")
+        vertices = [(x, y, height) for x, y in outline + inner]
+        faces = [(j, (j + 1) % count, (j + 1) % count + count, j + count) for j in range(count)]
+        faces.append(tuple(range(count, count * 2)))
+        mesh.from_pydata(vertices, [], faces)
+        mesh.update()
+        obj = _link(bpy.data.objects.new(f"street_puddle_{i}", mesh))
+        mesh.materials.append(damp)
+        mesh.materials.append(water)
+        mesh.polygons[-1].material_index = 1
+
+
 def street(m):
     """The sidewalk everything stands on, and the road a curb below it.
 
@@ -649,6 +729,14 @@ def street(m):
     for side in (-1, 1):
         for y0, y1 in ((-1.5, 0.75), (0.75, 3.0)):
             pieces.append((tuple(sorted((side * 2.9, side * edge))), (y0, y1)))
+    # Leave a real opening under the grate, rather than laying bars on stone.
+    pieces.remove(((0, 3 * slab), (-2.6, -1.5)))
+    pieces.extend([
+        ((0, 1.47), (-2.6, -1.5)),
+        ((1.89, 3 * slab), (-2.6, -1.5)),
+        ((1.47, 1.89), (-2.6, -2.27)),
+        ((1.47, 1.89), (-1.87, -1.5)),
+    ])
     for i, ((x0, x1), (y0, y1)) in enumerate(pieces):
         box(f"street_sidewalk_{i}", ((x0 + x1) / 2, (y0 + y1) / 2, -CURB / 2), (x1 - x0, y1 - y0, CURB), m.pave)
     for i, x in enumerate((-2 * 3 * slab, 0, 2 * 3 * slab)):
@@ -661,9 +749,7 @@ def street(m):
             box(f"street_joint_y_{side}_{k}", (side * (2.9 + edge) / 2, -1.0 + k * slab, 0.001), (edge - 2.9, 0.014, 0.004), m.ink)
         for i in range(3, 9):
             box(f"street_joint_s_{side}_{i}", (side * i * slab, 0.75, 0.001), (0.014, 4.5, 0.004), m.ink)
-    # drain grate right of the door
-    for i in range(5):
-        box(f"street_grate_{i}", (1.6 + i * 0.06, -2.1, 0.003), (0.02, 0.3, 0.006), m.ink)
+    street_detail(m)
 
 
 def storefront(m):

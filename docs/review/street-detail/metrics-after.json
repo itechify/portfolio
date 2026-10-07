@@ -1,0 +1,69 @@
+{
+	"bytes": 2799756,
+	"meshes": 126,
+	"primitives": 126,
+	"triangles": 194584,
+	"images": 19,
+	"measurements": {
+		"street": {
+			"calls": 131,
+			"triangles": 188583,
+			"textures": 54
+		},
+		"entrance": {
+			"calls": 116,
+			"triangles": 186201,
+			"textures": 54
+		},
+		"counter": {
+			"calls": 112,
+			"triangles": 185963,
+			"textures": 54
+		},
+		"kiosk": {
+			"calls": 44,
+			"triangles": 104555,
+			"textures": 54
+		},
+		"machine": {
+			"calls": 38,
+			"triangles": 85287,
+			"textures": 54
+		},
+		"food": {
+			"calls": 74,
+			"triangles": 151884,
+			"textures": 54
+		},
+		"pavement": {
+			"calls": 101,
+			"triangles": 179681,
+			"textures": 54
+		},
+		"balanced": {
+			"calls": 131,
+			"triangles": 188583,
+			"textures": 54
+		},
+		"light": {
+			"calls": 115,
+			"triangles": 188567,
+			"textures": 38
+		},
+		"phone-full": {
+			"calls": 117,
+			"triangles": 185999,
+			"textures": 54
+		},
+		"phone-balanced": {
+			"calls": 117,
+			"triangles": 185999,
+			"textures": 54
+		},
+		"phone-light": {
+			"calls": 101,
+			"triangles": 185983,
+			"textures": 38
+		}
+	}
+}

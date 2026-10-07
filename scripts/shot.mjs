@@ -16,6 +16,9 @@ const browser = await chromium.launch({
 	],
 });
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+// Freeze character poses before Entry for comparable model workload counts.
+if (process.argv.includes("--model-details"))
+	await page.emulateMedia({ reducedMotion: "reduce" });
 // Hold the Full Quality Tier for repeatable before/after visual comparisons.
 await page.addInitScript(() =>
 	localStorage.setItem("creamery-quality", "full"),
