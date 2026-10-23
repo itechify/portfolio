@@ -40,6 +40,20 @@ export const SECTIONS: readonly SectionDef[] = [
 					</p>
 					<a href={REPO}>Source on GitHub</a>
 				</li>
+				<li>
+					<h3>Minerva</h3>
+					<p>
+						A desktop overlay for MapleStory Classic World that reads the
+						minimap by ordinary screen capture and shows the player which map
+						they're on, with map and mob data, a grind tracker, item cards, and
+						leaderboards. It never touches the game's memory, files, or input.
+					</p>
+					<p className="tags">Rust · Tauri · TypeScript · Cloudflare Workers</p>
+					<p>
+						<a href="https://owlofminerva.app/">Site</a> ·{" "}
+						<a href="https://github.com/itechify/minerva">Source on GitHub</a>
+					</p>
+				</li>
 			</ul>
 		),
 	},
