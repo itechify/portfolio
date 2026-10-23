@@ -332,6 +332,10 @@ button.entry {
 	margin: 0;
 }
 
+.cards li + li {
+	margin-top: 1.25rem;
+}
+
 /* Inactive Sections stay in the document for crawlers and screen readers. */
 .section--inactive {
 	position: absolute;
